@@ -1,0 +1,7 @@
+# Install a JetPack-compatible CUDA PyTorch build separately on Jetson.
+transformers>=4.45.0
+pillow
+safetensors
+numpy
+opencv-python
+pyorbbecsdk2
