@@ -27,6 +27,7 @@ from model.model_camerror import MODEL_IDS, CameraInducedErrorModel
 from model.utils import CameraParameterRange, normalize_camera_parameters
 from policy.basic_policy import (
     ATIMDECameraProbingController,
+    BeliefUpdate,
     PolicyDecision,
     SafetyPolicy,
 )
@@ -69,6 +70,15 @@ CSV_FIELDNAMES = [
     "camera_bias",
     "std",
     "q",
+    "probe_step",
+    "belief_mean",
+    "belief_variance",
+    "scene_epoch",
+    "scene_change_z",
+    "scene_change_detected",
+    "probability_improvement",
+    "expected_improvement",
+    "probe_stop_reason",
     "frame_action",
     "round_action",
     "decision_reason",
@@ -602,6 +612,15 @@ class ModelV1Experiment:
             "camera_bias": "",
             "std": "",
             "q": "",
+            "probe_step": 0 if role == "initial" else "",
+            "belief_mean": "",
+            "belief_variance": "",
+            "scene_epoch": "",
+            "scene_change_z": "",
+            "scene_change_detected": 0,
+            "probability_improvement": "",
+            "expected_improvement": "",
+            "probe_stop_reason": "",
             "frame_action": "",
             "round_action": "",
             "decision_reason": "",
@@ -659,6 +678,24 @@ class ModelV1Experiment:
                 f"capture={row['capture_index']} mde_inference_ms={inference_ms:.2f}"
             )
 
+    @staticmethod
+    def _store_belief_update(
+        row: dict[str, Any], update: BeliefUpdate
+    ) -> None:
+        row.update(
+            {
+                "belief_mean": update.belief_mean,
+                "belief_variance": update.belief_variance,
+                "scene_epoch": update.scene_epoch,
+                "scene_change_z": (
+                    update.scene_change_z
+                    if update.scene_change_z is not None
+                    else ""
+                ),
+                "scene_change_detected": int(update.scene_change_detected),
+            }
+        )
+
     def _drop_jobs(
         self,
         jobs: Sequence[tuple[dict[str, Any], Future[QScore]]],
@@ -713,10 +750,10 @@ class ModelV1Experiment:
             return False
         return True
 
-    def _await_probe_batch(
+    def _await_probe_result(
         self,
-        rows: Sequence[dict[str, Any]],
-        future: Future[list[QScore]],
+        row: dict[str, Any],
+        future: Future[QScore],
         context: ContextKey,
     ) -> Optional[ContextKey]:
         stale_context: Optional[ContextKey] = None
@@ -726,13 +763,7 @@ class ModelV1Experiment:
                 stale_context = current_context
             wait([future], timeout=self.inference_poll_sec)
 
-        scores = future.result()
-        if len(scores) != len(rows):
-            raise RuntimeError(
-                f"Probe batch returned {len(scores)} scores for {len(rows)} frames."
-            )
-        for row, score in zip(rows, scores):
-            self._store_score(row, score)
+        self._store_score(row, future.result())
 
         current_context = self.context_provider.get()
         if current_context != context:
@@ -748,6 +779,7 @@ class ModelV1Experiment:
     ) -> None:
         decision_time_ns = time.time_ns()
         for row in rows:
+            row["probe_stop_reason"] = decision.reason
             if stale_context is None:
                 row["round_action"] = decision.action
                 row["decision_reason"] = decision.reason
@@ -819,6 +851,20 @@ class ModelV1Experiment:
             mu=float(initial_row["camera_bias"]),
         )
         initial_decision = self.policy.decide(current_cell, initial_score)
+        initial_update = self.policy.observe(
+            context, current_cell, initial_score
+        )
+        self._store_belief_update(initial_row, initial_update)
+        if (
+            initial_decision.action != "probe"
+            and self.policy.minimum_initial_probes_remaining(context) > 0
+        ):
+            initial_decision = PolicyDecision(
+                "probe",
+                "minimum_initial_probes",
+                current_cell,
+                initial_score,
+            )
         initial_row["frame_action"] = initial_decision.action
         print(
             f"[Decision] bias={initial_score.mu:.6f} std="
@@ -827,7 +873,6 @@ class ModelV1Experiment:
         )
 
         if initial_decision.action != "probe":
-            self.policy.observe(context, current_cell, initial_score)
             self._finish_decision([initial_row], initial_decision)
             if initial_decision.action == "use":
                 self.policy.remember_used_cell(context, current_cell)
@@ -836,100 +881,192 @@ class ModelV1Experiment:
             self.round_index += 1
             return
 
-        probe_cells = self.policy.select_probe_cells(context, current_cell)
-        if not probe_cells:
-            self.policy.observe(context, current_cell, initial_score)
-            exhausted = PolicyDecision(
-                "offload", "no_safe_probe_cell", current_cell, initial_score
-            )
-            self._finish_decision([initial_row], exhausted)
-            self.policy.invoke_offload(context, exhausted)
-            self.round_index += 1
-            return
-
-        probe_captures: list[
-            tuple[dict[str, Any], np.ndarray, np.ndarray]
-        ] = []
+        round_rows = [initial_row]
+        probed_this_round: set[str] = set()
+        probe_count = 0
         stale_context: Optional[ContextKey] = None
-        for cell in probe_cells:
+        final_decision: Optional[PolicyDecision] = None
+
+        def finish_for_exhaustion(reason: str) -> PolicyDecision:
+            best_cell = self.policy.posterior_best(context)
+            good_enough = (
+                self.policy.minimum_initial_probes_remaining(context) == 0
+                and self.policy.observed_in_current_scene(context, best_cell)
+                and self.policy.best_good_enough_probability(context, best_cell)
+                >= self.policy.good_enough_probability
+            )
+            return self.policy.complete_probe(
+                context,
+                action="use" if good_enough else "offload",
+                reason=reason,
+            )
+
+        while final_decision is None:
+            current_best = self.policy.posterior_best(context)
+            next_cell, probability_improvement, improvement = (
+                self.policy.select_next_probe_cell(
+                    context,
+                    current_best,
+                    probed_this_round,
+                )
+            )
+            if next_cell is None:
+                final_decision = finish_for_exhaustion(
+                    "no_remaining_probe_cell"
+                )
+                break
+
             current_context = self.context_provider.get()
             if current_context != context:
                 stale_context = current_context
-                break
-            probe_captures.append(self._capture(cell, context, "probe"))
-
-        if not probe_captures:
-            self.policy.observe(context, current_cell, initial_score)
-            self._finish_decision(
-                [initial_row], initial_decision, stale_context=stale_context
-            )
-            assert stale_context is not None
-            safe_cell = self.policy.cell_for_context(
-                stale_context, self.default_cell
-            )
-            self._apply_control_cell(safe_cell, reason="probe_deferred")
-            print(
-                f"[Probe deferred] context={context.table_key} changed to "
-                f"{stale_context.table_key}; initial result retained and camera "
-                f"moved to {safe_cell.cell_id}."
-            )
-            self.round_index += 1
-            return
-
-        probe_rows = [row for row, _, _ in probe_captures]
-        print(
-            f"[Probe batch] context={context.table_key} size={len(probe_rows)}"
-        )
-        probe_future = self.executor.submit(
-            self.predictor.predict_batch,
-            [image for _, image, _ in probe_captures],
-            contexts=[context] * len(probe_captures),
-            exposure_us_values=[
-                float(row["exposure_us_model"]) for row in probe_rows
-            ],
-            gains=[
-                float(
-                    row["actual_gain"]
-                    if row["actual_gain"] not in (None, "")
-                    else row["gain"]
+                final_decision = finish_for_exhaustion(
+                    "context_changed_during_probe"
                 )
-                for row in probe_rows
-            ],
-        )
-        for row, image, depth in probe_captures:
-            self._save_capture(row, image, depth)
-        batch_stale_context = self._await_probe_batch(
-            probe_rows, probe_future, context
-        )
-        if batch_stale_context is not None:
-            stale_context = batch_stale_context
+                break
 
-        observations = [(current_cell, initial_score)]
-        self.policy.observe(context, current_cell, initial_score)
-        for row in probe_rows:
-            score = QScore(
-                q=float(row["q"]),
-                uncertainty=float(row["std"]),
-                mu=float(row["camera_bias"]),
+            probe_step = probe_count + 1
+            print(
+                f"[Probe step {probe_step}] context={context.table_key} "
+                f"cell={next_cell.cell_id} p_imp={probability_improvement:.6f} "
+                f"ei={improvement:.6f}"
             )
-            cell = SensorCell(int(row["exposure_ms"]), int(row["gain"]))
-            self.policy.observe(context, cell, score)
-            observations.append((cell, score))
-            row["frame_action"] = "probe_candidate"
+            probe_row, probe_image, probe_depth = self._capture(
+                next_cell, context, "probe"
+            )
+            probe_row.update(
+                {
+                    "probe_step": probe_step,
+                    "probability_improvement": probability_improvement,
+                    "expected_improvement": improvement,
+                }
+            )
+            probe_future = self.executor.submit(
+                self.predictor.predict,
+                probe_image,
+                context=context,
+                exposure_us=float(probe_row["exposure_us_model"]),
+                gain=float(
+                    probe_row["actual_gain"]
+                    if probe_row["actual_gain"] not in (None, "")
+                    else probe_row["gain"]
+                ),
+            )
+            self._save_capture(probe_row, probe_image, probe_depth)
+            result_stale_context = self._await_probe_result(
+                probe_row, probe_future, context
+            )
+            if result_stale_context is not None:
+                stale_context = result_stale_context
 
-        final_decision = self.policy.resolve_probe(
-            context, current_cell, observations
-        )
-        latest_context = self.context_provider.get()
-        if latest_context != context:
-            stale_context = latest_context
-        round_rows = [initial_row, *probe_rows]
+            probe_score = QScore(
+                q=float(probe_row["q"]),
+                uncertainty=float(probe_row["std"]),
+                mu=float(probe_row["camera_bias"]),
+            )
+            belief_update = self.policy.observe(
+                context, next_cell, probe_score
+            )
+            self._store_belief_update(probe_row, belief_update)
+            probe_row["frame_action"] = "probe_candidate"
+            round_rows.append(probe_row)
+            probed_this_round.add(next_cell.cell_id)
+            probe_count += 1
+
+            if stale_context is not None:
+                final_decision = finish_for_exhaustion(
+                    "context_changed_during_probe"
+                )
+                break
+
+            current_best = self.policy.posterior_best(context)
+            best_observed = self.policy.observed_in_current_scene(
+                context, current_best
+            )
+            best_good_enough_probability = (
+                self.policy.best_good_enough_probability(context, current_best)
+            )
+
+            # A new context/scene must collect the configured number of
+            # additional distinct cell observations before any early stop.
+            if self.policy.minimum_initial_probes_remaining(context) > 0:
+                if probe_count >= self.policy.cells_per_probe:
+                    final_decision = finish_for_exhaustion(
+                        "maximum_probe_budget"
+                    )
+                    break
+                continue
+
+            # A. A current-scene observation is probably below the practical
+            # low-bias threshold.
+            if (
+                best_observed
+                and best_good_enough_probability
+                >= self.policy.good_enough_probability
+            ):
+                final_decision = self.policy.complete_probe(
+                    context,
+                    action="use",
+                    reason="good_enough_probability",
+                )
+                break
+
+            # B. The best cell's upper confidence bound is separated from all
+            # competitors' lower confidence bounds.
+            if self.policy.best_is_confidently_separated(
+                context, current_best
+            ):
+                final_decision = self.policy.complete_probe(
+                    context,
+                    action="use",
+                    reason="best_confidence_separation",
+                )
+                break
+
+            prospective_cell, _, maximum_improvement = (
+                self.policy.select_next_probe_cell(
+                    context,
+                    current_best,
+                    probed_this_round,
+                )
+            )
+            best_requires_validation = not best_observed
+
+            # C. Warm-start validation takes priority after a scene change.
+            # Otherwise stop when no remaining candidate can repay probe cost.
+            if prospective_cell is None:
+                final_decision = finish_for_exhaustion(
+                    "no_remaining_probe_cell"
+                )
+                break
+            if (
+                not best_requires_validation
+                and maximum_improvement < self.policy.ei_probe_cost
+            ):
+                final_decision = finish_for_exhaustion(
+                    "expected_improvement_below_probe_cost"
+                )
+                break
+
+            # D. --cells-per-probe is the maximum number of sequential
+            # single-frame probes in this round.
+            if probe_count >= self.policy.cells_per_probe:
+                final_decision = finish_for_exhaustion(
+                    "maximum_probe_budget"
+                )
+                break
+
+        assert final_decision is not None
         self._finish_decision(
             round_rows, final_decision, stale_context=stale_context
         )
+        selected_mean, selected_variance = self.policy.belief(
+            context, final_decision.selected_cell
+        )
         print(
             f"[Probe result] selected={final_decision.selected_cell.cell_id} "
-            f"q={final_decision.score.q:.6f} action={final_decision.action}"
+            f"belief_mean={selected_mean:.6f} "
+            f"belief_variance={selected_variance:.6f} "
+            f"action={final_decision.action} reason={final_decision.reason}"
         )
 
         if stale_context is not None:
@@ -1088,8 +1225,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--high-bias-threshold", type=float, default=0.20)
     parser.add_argument("--probe-std-threshold", type=float, default=0.08)
     parser.add_argument("--cells-per-probe", type=int, default=4)
+    parser.add_argument(
+        "--min-initial-probes",
+        type=int,
+        default=0,
+        help="Minimum additional distinct cells to observe in each new "
+        "context/scene before allowing an early stop. Default 0 preserves "
+        "the previous behavior.",
+    )
     parser.add_argument("--ema-alpha", type=float, default=0.3)
     parser.add_argument("--switch-margin", type=float, default=0.01)
+    parser.add_argument("--ei-practical-margin", type=float, default=0.01)
+    parser.add_argument("--ei-probe-cost", type=float, default=0.001)
+    parser.add_argument("--confidence-z", type=float, default=1.96)
+    parser.add_argument("--good-enough-probability", type=float, default=0.95)
+    parser.add_argument("--scene-change-z-threshold", type=float, default=3.0)
+    parser.add_argument("--scene-change-confirmations", type=int, default=2)
+    parser.add_argument("--scene-variance-inflation", type=float, default=4.0)
+    parser.add_argument("--scene-reset-variance", type=float, default=0.01)
+    parser.add_argument(
+        "--unobserved-prior-mean",
+        type=float,
+        default=None,
+        help="Defaults to --high-bias-threshold.",
+    )
+    parser.add_argument("--unobserved-prior-variance", type=float, default=0.04)
+    parser.add_argument("--belief-variance-floor", type=float, default=1e-6)
     parser.add_argument("--offload-command", type=str, default=None)
     parser.add_argument("--safety-config", type=Path, default=None)
 
@@ -1192,11 +1353,23 @@ def main() -> int:
         policy = ATIMDECameraProbingController(
             safety_policy,
             cells_per_probe=args.cells_per_probe,
+            min_initial_probes=args.min_initial_probes,
             ema_alpha=args.ema_alpha,
             switch_margin=args.switch_margin,
             low_bias_threshold=args.low_bias_threshold,
             high_bias_threshold=args.high_bias_threshold,
             probe_std_threshold=args.probe_std_threshold,
+            ei_practical_margin=args.ei_practical_margin,
+            ei_probe_cost=args.ei_probe_cost,
+            confidence_z=args.confidence_z,
+            good_enough_probability=args.good_enough_probability,
+            scene_change_z_threshold=args.scene_change_z_threshold,
+            scene_change_confirmations=args.scene_change_confirmations,
+            scene_variance_inflation=args.scene_variance_inflation,
+            scene_reset_variance=args.scene_reset_variance,
+            unobserved_prior_mean=args.unobserved_prior_mean,
+            unobserved_prior_variance=args.unobserved_prior_variance,
+            belief_variance_floor=args.belief_variance_floor,
             offload_command=args.offload_command,
         )
 

@@ -29,6 +29,15 @@ class ExperimentLogger:
         "q",
         "uncertainty",
         "mu",
+        "probe_step",
+        "belief_mean",
+        "belief_variance",
+        "scene_epoch",
+        "scene_change_z",
+        "scene_change_detected",
+        "probability_improvement",
+        "expected_improvement",
+        "probe_stop_reason",
         "ema_before",
         "ema_after",
         "count_after",
@@ -59,4 +68,3 @@ class ExperimentLogger:
 
     def close(self) -> None:
         self._file.close()
-

@@ -8,7 +8,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional, Sequence, Union
+from typing import Any, Iterable, Optional, Union
 
 import cv2
 import numpy as np
@@ -101,8 +101,20 @@ class CellStats:
     last_uncertainty: Optional[float] = None
     last_mu: Optional[float] = None
     last_seen_cycle: int = -1
+    belief_mean: Optional[float] = None
+    belief_variance: Optional[float] = None
+    last_scene_epoch: int = -1
 
-    def update(self, score: QScore, *, alpha: float, cycle_index: int) -> None:
+    def update(
+        self,
+        score: QScore,
+        *,
+        alpha: float,
+        cycle_index: int,
+        observation_variance: Optional[float] = None,
+        variance_floor: Optional[float] = None,
+        scene_epoch: Optional[int] = None,
+    ) -> None:
         if not math.isfinite(score.q):
             raise ValueError(f"Non-finite q score: {score.q}")
 
@@ -117,6 +129,44 @@ class CellStats:
         self.last_mu = score.mu
         self.last_seen_cycle = cycle_index
 
+        # Belief arguments are optional so existing EMA-only users retain the
+        # previous update interface.
+        belief_arguments = (observation_variance, variance_floor, scene_epoch)
+        if all(value is None for value in belief_arguments):
+            return
+        if any(value is None for value in belief_arguments):
+            raise ValueError("All Gaussian belief update arguments are required.")
+        if score.mu is None or not math.isfinite(score.mu):
+            raise ValueError("QScore.mu must contain a finite belief observation.")
+        assert observation_variance is not None
+        assert variance_floor is not None
+        assert scene_epoch is not None
+        if not math.isfinite(observation_variance) or observation_variance <= 0.0:
+            raise ValueError("observation_variance must be finite and positive.")
+        if not math.isfinite(variance_floor) or variance_floor <= 0.0:
+            raise ValueError("variance_floor must be finite and positive.")
+
+        observation_variance = max(observation_variance, variance_floor)
+        if self.belief_mean is None or self.belief_variance is None:
+            self.belief_mean = float(score.mu)
+            self.belief_variance = observation_variance
+        else:
+            prior_variance = max(self.belief_variance, variance_floor)
+            fused_variance = max(
+                1.0
+                / (
+                    1.0 / prior_variance
+                    + 1.0 / observation_variance
+                ),
+                variance_floor,
+            )
+            self.belief_mean = fused_variance * (
+                self.belief_mean / prior_variance
+                + float(score.mu) / observation_variance
+            )
+            self.belief_variance = fused_variance
+        self.last_scene_epoch = scene_epoch
+
 
 @dataclass
 class ContextState:
@@ -128,34 +178,9 @@ class ContextState:
     best_cell_id: Optional[str] = None
     challenger_cell_id: Optional[str] = None
     challenger_streak: int = 0
-    round_robin_pointer: int = 0
     committed_cycles: int = 0
-
-    def safe_unobserved(self, safe_cells: Sequence[SensorCell]) -> list[SensorCell]:
-        return [
-            cell for cell in safe_cells if self.cells[cell.cell_id].count == 0
-        ]
-
-    def initialization_complete(self, safe_cells: Sequence[SensorCell]) -> bool:
-        return all(self.cells[cell.cell_id].count > 0 for cell in safe_cells)
-
-    def best_from_scores(self, safe_cells: Sequence[SensorCell]) -> SensorCell:
-        candidates = [
-            cell
-            for cell in safe_cells
-            if self.cells[cell.cell_id].ema_score is not None
-        ]
-        if not candidates:
-            raise RuntimeError("No scored safe cell is available.")
-
-        # Stable deterministic tie-breaking follows ALL_CELLS ordering.
-        return min(
-            candidates,
-            key=lambda cell: (
-                float(self.cells[cell.cell_id].ema_score),
-                ALL_CELLS.index(cell),
-            ),
-        )
+    scene_epoch: int = 0
+    scene_change_streak: int = 0
 
 
 @dataclass(frozen=True)

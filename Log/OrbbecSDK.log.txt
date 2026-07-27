@@ -2403,3 +2403,1580 @@
 [07/21 20:41:11.257345][info][34969][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
 [07/21 20:41:11.284602][info][34969][ObLibuvcDevicePort.cpp:87] uvc_close done.
 [07/21 20:41:11.284622][info][34969][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:07:37.967633][info][7082][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 18:07:37.967773][info][7082][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 18:07:37.967782][info][7082][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:07:37.967790][info][7082][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 18:07:38.975348][info][7082][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 18:07:38.975390][info][7082][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:07:38.995595][info][7082][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 18:07:39.003408][info][7082][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 18:07:39.231946][info][7082][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 18:07:39.232060][info][7082][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x3D5A8100
+[07/27 18:07:39.259057][info][7082][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 18:07:39.261001][info][7082][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 18:07:39.261028][info][7082][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 18:07:39.261057][info][7082][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 18:07:39.261072][info][7082][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 18:07:39.267288][info][7082][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 18:07:39.267322][info][7082][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 18:07:39.267333][info][7082][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 18:07:39.285364][info][7082][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 18:07:39.285373][info][7082][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 18:07:39.581214][info][7158][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 18:07:39.715496][info][7157][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 18:07:44.392951][warning][7159][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 18:07:44.583421][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.185740fps
+[07/27 18:07:44.689114][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.200078fps
+[07/27 18:07:44.737365][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.063322fps
+[07/27 18:07:44.738100][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.081888fps
+[07/27 18:07:47.493048][warning][7181][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**14 logs in 3099ms, last: 18:07:45.793140**]
+[07/27 18:07:49.591046][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:07:49.700229][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.978048fps
+[07/27 18:07:49.760395][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:07:49.761758][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:07:54.597394][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:07:54.707392][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:07:54.783488][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:07:54.784814][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:07:59.604944][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:07:59.713344][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:07:59.806485][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:07:59.807820][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:04.612476][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:08:04.721434][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:08:04.829505][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:04.830854][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:09.621137][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:08:09.730463][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:08:09.852809][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:09.854344][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:14.628555][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:08:14.737738][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:08:14.875537][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:14.876900][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:19.634973][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:08:19.744238][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:08:19.898694][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:19.900052][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:24.642650][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:08:24.751389][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:08:24.921667][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:24.922876][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:29.651055][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:08:29.760217][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:08:29.944627][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:29.945983][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:34.658969][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:08:34.767564][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:08:34.967722][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:34.969057][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:39.666166][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:08:39.776132][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:08:39.990761][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:39.992339][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:44.672548][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:08:44.781957][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:08:45.013677][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:08:45.015063][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:49.680020][info][7158][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:08:49.788545][info][7159][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:08:50.036843][info][7157][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 18:08:50.038152][info][7162][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:08:54.563723][info][7082][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 18:08:54.563761][info][7082][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 18:08:54.563818][info][7082][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 18:08:54.695617][info][7082][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 18:08:54.695841][info][7082][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 18:08:54.695870][info][7082][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 18:08:54.746766][info][7082][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 18:08:54.747252][info][7082][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 18:08:54.747260][info][7082][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 18:08:54.748971][info][7082][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 18:09:28.640415][info][7082][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x3D5A8100
+[07/27 18:09:28.640725][info][7082][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:09:28.656318][info][7082][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:09:28.656335][info][7082][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:09:28.656608][info][7082][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:09:28.689166][info][7082][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:09:28.689184][info][7082][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:13:53.286404][info][7538][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 18:13:53.286472][info][7538][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 18:13:53.286478][info][7538][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:13:53.286484][info][7538][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 18:13:54.296028][info][7538][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 18:13:54.296068][info][7538][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:13:54.303660][info][7538][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 18:13:54.311149][info][7538][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 18:13:54.538399][info][7538][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 18:13:54.538496][info][7538][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x121B8070
+[07/27 18:13:54.566324][info][7538][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 18:13:54.568292][info][7538][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 18:13:54.568322][info][7538][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 18:13:54.568351][info][7538][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 18:13:54.568365][info][7538][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 18:13:54.574611][info][7538][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 18:13:54.574644][info][7538][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 18:13:54.574654][info][7538][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 18:13:54.592631][info][7538][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 18:13:54.592641][info][7538][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 18:13:54.807767][warning][7601][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32517, expected=814080 @Depth
+[07/27 18:13:54.982948][warning][7601][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Frame.cpp(85)
+ - msg: Update data size(1004723) > data buffer size! (814080)
+ - type: MEMORY
+ - status: 104
+[07/27 18:13:54.989122][warning][7601][ObLibuvcDevicePort.cpp:469] Execute failure! A libobsensor_exception has occurred!
+ - where: ObLibuvcDevicePort.cpp(469):onFrameCallback
+ - msg: Update data size(1004723) > data buffer size! (814080)
+ - type: N11libobsensor23unrecoverable_exceptionE
+ - status: 104
+[07/27 18:13:54.999030][warning][7600][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32533, expected=614400 @Color
+[07/27 18:13:55.058511][info][7600][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 18:13:55.088304][info][7601][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 18:13:57.811128][warning][7602][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32694, expected=814080 @Depth [**13 logs in 3003ms, last: 18:13:54.864078**]
+[07/27 18:13:58.002270][warning][7603][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32533, expected=614400 @Color [**10 logs in 3003ms, last: 18:13:55.030809**]
+[07/27 18:13:59.890824][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=12.391817fps
+[07/27 18:14:00.015996][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=32.888180fps
+[07/27 18:14:00.082468][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.069510fps
+[07/27 18:14:00.101767][warning][7606][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 18:14:00.101991][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.191846fps
+[07/27 18:14:03.199149][warning][7628][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**2 logs in 3097ms, last: 18:14:00.298656**]
+[07/27 18:14:04.897357][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:14:05.039031][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:05.105128][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:05.107430][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.990009fps
+[07/27 18:14:09.904778][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:14:10.062106][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:10.113722][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:14:10.128082][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:14.913357][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:14:15.085035][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:15.120953][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:14:15.151513][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:19.920938][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:14:20.108267][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:20.129663][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:14:20.174301][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:24.928330][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:14:25.131051][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:25.138116][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:14:25.197209][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:29.935853][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:14:30.145101][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:14:30.154180][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:30.220323][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:34.942291][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:14:35.150841][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:14:35.177071][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:35.243327][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:39.950804][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:14:40.159828][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:14:40.200127][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:40.266359][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:44.958426][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:14:45.167507][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:14:45.223143][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:45.289299][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:49.966304][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:14:50.174948][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:14:50.246277][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:50.312344][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:54.973347][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:14:55.182189][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:14:55.269212][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:14:55.335378][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:14:59.979830][info][7601][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:15:00.188122][info][7606][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:15:00.292239][info][7600][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:15:00.358386][info][7605][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:15:03.662201][info][7538][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 18:15:03.662241][info][7538][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 18:15:03.662307][info][7538][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 18:15:03.792580][info][7538][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 18:15:03.793311][info][7538][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 18:15:03.793351][info][7538][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 18:15:03.847086][info][7538][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 18:15:03.847587][info][7538][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 18:15:03.847596][info][7538][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 18:15:03.849449][info][7538][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 18:15:36.435162][info][7538][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x121B8070
+[07/27 18:15:36.435490][info][7538][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:15:36.451011][info][7538][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:15:36.451025][info][7538][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:15:36.451140][info][7538][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:15:36.479542][info][7538][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:15:36.479560][info][7538][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:30:32.978559][info][8336][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 18:30:32.978624][info][8336][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 18:30:32.978629][info][8336][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:30:32.978636][info][8336][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 18:30:33.983868][info][8336][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 18:30:33.983912][info][8336][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:30:33.991253][info][8336][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 18:30:34.000527][info][8336][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 18:30:34.227574][info][8336][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 18:30:34.227670][info][8336][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x40F9C8E0
+[07/27 18:30:34.255609][info][8336][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 18:30:34.257543][info][8336][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 18:30:34.257572][info][8336][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 18:30:34.257600][info][8336][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 18:30:34.257615][info][8336][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 18:30:34.263796][info][8336][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 18:30:34.263826][info][8336][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 18:30:34.263836][info][8336][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 18:30:34.281683][info][8336][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 18:30:34.281693][info][8336][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 18:30:34.594278][info][8402][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 18:30:34.712734][info][8401][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 18:30:39.385707][warning][8404][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 18:30:39.678973][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.198078fps
+[07/27 18:30:39.684782][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.238235fps
+[07/27 18:30:39.735120][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.057138fps
+[07/27 18:30:39.736155][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.069510fps
+[07/27 18:30:42.391630][warning][8404][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**27 logs in 3005ms**]
+[07/27 18:30:44.687735][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:30:44.697562][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.976057fps
+[07/27 18:30:44.758381][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:30:44.759752][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:30:48.495012][warning][8431][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**24 logs in 6103ms, last: 18:30:45.398010**]
+[07/27 18:30:49.695318][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:30:49.705815][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:30:49.781084][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:30:49.782490][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 18:30:54.702782][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:30:54.711861][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:30:54.804427][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:30:54.806004][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:30:59.709157][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:30:59.717950][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:30:59.827091][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:30:59.827957][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 18:31:04.717881][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:31:04.727225][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:31:04.850606][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:31:04.851880][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:31:09.725206][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:31:09.733873][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:31:09.873115][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:31:09.874447][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 18:31:14.732884][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:31:14.742171][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:31:14.896198][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:31:14.897582][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:31:19.739306][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:31:19.749643][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:31:19.919168][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:31:19.920525][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:31:24.746692][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:31:24.757448][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:31:24.942192][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:31:24.943503][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:31:29.755574][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:31:29.764931][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:31:29.965257][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:31:29.966571][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:31:34.762710][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:31:34.771733][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:31:34.988232][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:31:34.989747][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:31:39.770344][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:31:39.777557][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:31:40.012210][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 18:31:40.013614][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:31:44.776616][info][8402][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:31:44.785408][info][8404][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:31:45.034287][info][8401][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.864199fps
+[07/27 18:31:45.035756][info][8407][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:31:49.164378][info][8336][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 18:31:49.164417][info][8336][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 18:31:49.164473][info][8336][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 18:31:49.296788][info][8336][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 18:31:49.297049][info][8336][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 18:31:49.297082][info][8336][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 18:31:49.350772][info][8336][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 18:31:49.351273][info][8336][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 18:31:49.351280][info][8336][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 18:31:49.353095][info][8336][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 18:32:52.914643][info][8336][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x40F9C8E0
+[07/27 18:32:52.914995][info][8336][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:32:52.930363][info][8336][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:32:52.930373][info][8336][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:32:52.930480][info][8336][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:32:52.956329][info][8336][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:32:52.956346][info][8336][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:34:57.030677][info][8791][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 18:34:57.030764][info][8791][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 18:34:57.030772][info][8791][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:34:57.030780][info][8791][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 18:34:58.035549][info][8791][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 18:34:58.035593][info][8791][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:34:58.051538][info][8791][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 18:34:58.058817][info][8791][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 18:34:58.286633][info][8791][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 18:34:58.286729][info][8791][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x1B6F43D0
+[07/27 18:34:58.314629][info][8791][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 18:34:58.316520][info][8791][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 18:34:58.316547][info][8791][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 18:34:58.316575][info][8791][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 18:34:58.316588][info][8791][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 18:34:58.323063][info][8791][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 18:34:58.323090][info][8791][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 18:34:58.323100][info][8791][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 18:34:58.341241][info][8791][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 18:34:58.341250][info][8791][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 18:34:58.563256][warning][8855][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=65298, expected=814080 @Depth
+[07/27 18:34:58.732161][warning][8855][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Frame.cpp(85)
+ - msg: Update data size(1004698) > data buffer size! (814080)
+ - type: MEMORY
+ - status: 104
+[07/27 18:34:58.735972][warning][8855][ObLibuvcDevicePort.cpp:469] Execute failure! A libobsensor_exception has occurred!
+ - where: ObLibuvcDevicePort.cpp(469):onFrameCallback
+ - msg: Update data size(1004698) > data buffer size! (814080)
+ - type: N11libobsensor23unrecoverable_exceptionE
+ - status: 104
+[07/27 18:34:58.776417][info][8854][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 18:34:58.836812][info][8855][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 18:35:01.565614][warning][8856][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=65454, expected=814080 @Depth [**10 logs in 3002ms, last: 18:34:58.612565**]
+[07/27 18:35:03.445087][warning][8860][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 18:35:03.639175][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=11.818003fps
+[07/27 18:35:03.798184][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.063322fps
+[07/27 18:35:03.799529][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.075697fps
+[07/27 18:35:03.849412][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.193884fps
+[07/27 18:35:06.545678][warning][8879][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**15 logs in 3100ms, last: 18:35:05.851315**]
+[07/27 18:35:08.645848][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:35:08.821214][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:08.821950][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:35:08.854486][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.990009fps
+[07/27 18:35:13.654226][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:35:13.844195][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:13.845569][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:35:13.862221][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:35:18.661886][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:35:18.867250][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:18.868593][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:35:18.871094][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:35:23.669367][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:35:23.878650][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:35:23.890277][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:23.891582][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:35:28.675734][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:35:28.886246][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:35:28.915408][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.845770fps
+[07/27 18:35:28.916734][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.845770fps
+[07/27 18:35:33.683211][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:35:33.893158][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:35:33.936299][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.870346fps
+[07/27 18:35:33.937655][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.870346fps
+[07/27 18:35:38.690658][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:35:38.899848][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:35:38.959473][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:38.960861][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:35:43.699305][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:35:43.906849][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:35:43.982410][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:43.983769][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:35:48.706846][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:35:48.917625][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.980040fps
+[07/27 18:35:49.005379][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:49.006780][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:35:53.714318][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:35:53.923957][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:35:54.028362][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:54.029808][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:35:58.720666][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:35:58.930171][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:35:59.051432][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:35:59.052557][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 18:36:03.728157][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:36:03.937410][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:36:04.074445][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:36:04.075953][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:36:08.736737][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:36:08.946305][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:36:09.097370][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:36:09.098637][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 18:36:13.744283][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:36:13.954242][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:36:14.120498][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:36:14.121946][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:36:18.750756][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:36:18.959453][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.990009fps
+[07/27 18:36:19.143466][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:36:19.144917][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:36:23.758112][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:36:23.967159][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:36:24.166486][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:36:24.167918][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:36:28.766708][info][8855][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:36:28.975123][info][8860][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:36:29.189866][info][8854][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 18:36:29.191566][info][8858][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:36:32.857877][info][8791][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 18:36:32.857915][info][8791][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 18:36:32.857970][info][8791][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 18:36:32.988817][warning][8854][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32604, expected=614400 @Color
+[07/27 18:36:32.990509][info][8791][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 18:36:32.990833][info][8791][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 18:36:32.990856][info][8791][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 18:36:33.047220][info][8791][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 18:36:33.047699][info][8791][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 18:36:33.047707][info][8791][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 18:36:33.049402][info][8791][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 18:36:35.989291][warning][8989][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32599, expected=614400 @Color [**2 logs in 3000ms, last: 18:36:32.990060**]
+[07/27 18:37:49.217002][info][8791][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x1B6F43D0
+[07/27 18:37:49.217338][info][8791][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:37:49.233004][info][8791][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:37:49.233017][info][8791][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:37:49.233155][info][8791][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:37:49.260735][info][8791][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:37:49.260776][info][8791][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:56:02.776921][info][9207][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 18:56:02.776991][info][9207][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 18:56:02.776997][info][9207][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:56:02.777005][info][9207][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 18:56:03.783191][info][9207][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 18:56:03.783269][info][9207][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 18:56:03.793260][info][9207][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 18:56:03.801003][info][9207][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 18:56:04.029200][info][9207][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 18:56:04.029306][info][9207][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x32E757F0
+[07/27 18:56:04.056837][info][9207][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 18:56:04.058776][info][9207][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 18:56:04.058800][info][9207][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 18:56:04.058825][info][9207][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 18:56:04.058838][info][9207][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 18:56:04.065245][info][9207][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 18:56:04.065273][info][9207][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 18:56:04.065284][info][9207][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 18:56:04.083354][info][9207][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 18:56:04.083361][info][9207][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 18:56:04.380873][info][9271][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 18:56:04.515602][info][9270][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 18:56:09.380246][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.189810fps
+[07/27 18:56:09.486360][warning][9272][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 18:56:09.486550][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.204082fps
+[07/27 18:56:09.537855][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.057138fps
+[07/27 18:56:09.539226][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.069510fps
+[07/27 18:56:12.587328][warning][9295][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**17 logs in 3100ms, last: 18:56:11.493583**]
+[07/27 18:56:14.389025][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:56:14.498435][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.976057fps
+[07/27 18:56:14.561084][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:14.562396][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:56:19.396437][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:56:19.506380][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:56:19.583901][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:19.585299][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:56:24.404095][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:56:24.513325][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:56:24.607112][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:24.609333][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:56:29.410407][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:56:29.520019][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:56:29.630030][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:29.631342][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 18:56:34.417831][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:56:34.525215][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.990009fps
+[07/27 18:56:34.653118][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:34.654429][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:56:39.426475][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:56:39.535412][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.980040fps
+[07/27 18:56:39.676015][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:39.677523][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:56:44.434067][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:56:44.543487][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:56:44.699137][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:44.700514][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:56:49.441464][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:56:49.551959][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:56:49.722048][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:49.723364][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:56:54.447918][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:56:54.557080][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.990009fps
+[07/27 18:56:54.745244][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:54.746303][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:56:59.455406][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:56:59.562934][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:56:59.768061][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:56:59.769441][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:57:04.464115][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 18:57:04.573969][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.978048fps
+[07/27 18:57:04.791220][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:57:04.792605][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:57:09.471502][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:57:09.580689][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:57:09.814155][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:57:09.815586][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:57:14.479056][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:57:14.587752][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:57:14.837202][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:57:14.838642][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:57:19.485275][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 18:57:19.594835][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:57:19.860183][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:57:19.861527][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:57:24.492963][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:57:24.601325][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 18:57:24.883168][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:57:24.884520][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:57:29.501503][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:57:29.610656][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 18:57:29.906225][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:57:29.907495][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:57:34.509298][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 18:57:34.618296][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 18:57:34.929235][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:57:34.930575][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 18:57:39.516498][info][9271][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 18:57:39.625511][info][9272][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 18:57:39.952370][info][9270][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 18:57:39.953758][info][9275][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 18:57:40.802540][info][9207][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 18:57:40.802578][info][9207][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 18:57:40.802637][info][9207][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 18:57:40.932320][info][9207][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 18:57:40.932772][info][9207][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 18:57:40.932818][info][9207][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 18:57:40.986383][info][9207][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 18:57:40.986887][info][9207][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 18:57:40.986894][info][9207][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 18:57:40.988627][info][9207][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 18:59:06.815992][info][9207][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x32E757F0
+[07/27 18:59:06.816342][info][9207][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:59:06.831660][info][9207][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:59:06.831670][info][9207][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 18:59:06.831778][info][9207][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 18:59:06.860660][info][9207][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 18:59:06.860676][info][9207][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:09:13.706383][info][9681][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 19:09:13.706451][info][9681][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 19:09:13.706457][info][9681][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:09:13.706463][info][9681][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 19:09:14.711080][info][9681][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 19:09:14.711122][info][9681][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:09:14.725312][info][9681][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 19:09:14.732621][info][9681][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 19:09:14.960907][info][9681][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 19:09:14.961001][info][9681][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x236AAA40
+[07/27 19:09:14.988814][info][9681][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 19:09:14.990668][info][9681][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 19:09:14.990695][info][9681][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 19:09:14.990720][info][9681][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 19:09:14.990734][info][9681][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 19:09:14.997025][info][9681][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 19:09:14.997048][info][9681][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 19:09:14.997056][info][9681][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 19:09:15.014994][info][9681][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 19:09:15.015020][info][9681][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 19:09:15.248666][warning][9745][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32760, expected=814080 @Depth
+[07/27 19:09:15.405411][warning][9745][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Frame.cpp(85)
+ - msg: Update data size(1037361) > data buffer size! (814080)
+ - type: MEMORY
+ - status: 104
+[07/27 19:09:15.405944][warning][9745][ObLibuvcDevicePort.cpp:469] Execute failure! A libobsensor_exception has occurred!
+ - where: ObLibuvcDevicePort.cpp(469):onFrameCallback
+ - msg: Update data size(1037361) > data buffer size! (814080)
+ - type: N11libobsensor23unrecoverable_exceptionE
+ - status: 104
+[07/27 19:09:15.450140][info][9744][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 19:09:15.510719][info][9745][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 19:09:18.258405][warning][9746][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32750, expected=814080 @Depth [**4 logs in 3009ms, last: 19:09:15.286460**]
+[07/27 19:09:20.223152][warning][9750][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 19:09:20.313523][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.661402fps
+[07/27 19:09:20.472402][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.063322fps
+[07/27 19:09:20.473848][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.069510fps
+[07/27 19:09:20.522836][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.191846fps
+[07/27 19:09:23.323020][warning][9770][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**18 logs in 3099ms, last: 19:09:22.023868**]
+[07/27 19:09:25.321441][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:09:25.495799][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:09:25.497176][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:09:25.530786][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:09:30.329260][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:09:30.519149][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:09:30.520451][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:09:30.538341][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:09:35.336048][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:09:35.542575][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:09:35.543907][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:09:35.544534][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:09:40.345063][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:09:40.554326][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.980040fps
+[07/27 19:09:40.565898][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:09:40.567218][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:09:45.353299][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:09:45.562213][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:09:45.589392][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:09:45.590766][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:09:50.360696][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:09:50.569981][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:09:50.612658][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:09:50.614326][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:09:55.367516][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:09:55.576571][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:09:55.636165][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:09:55.637535][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:10:00.375299][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:10:00.584003][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:10:00.659405][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:10:00.660807][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:10:05.384270][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:10:05.595764][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.976057fps
+[07/27 19:10:05.682690][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:10:05.684036][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:10:10.392041][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:10:10.601213][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.990009fps
+[07/27 19:10:10.706046][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:10:10.707444][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:10:15.399808][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:10:15.611396][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.980040fps
+[07/27 19:10:15.729554][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:10:15.730655][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:10:20.406676][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:10:20.614749][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.992006fps
+[07/27 19:10:20.752707][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:10:20.754085][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:10:25.414348][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:10:25.623543][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:10:25.776109][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:10:25.777227][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:10:30.423295][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:10:30.632260][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:10:30.799394][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:10:30.800721][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:10:35.431112][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:10:35.640900][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:10:35.822815][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:10:35.824126][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:10:40.437893][info][9745][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:10:40.648126][info][9750][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:10:40.846096][info][9744][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:10:40.847450][info][9748][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:10:43.015765][info][9681][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 19:10:43.015803][info][9681][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 19:10:43.015865][info][9681][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 19:10:43.149291][info][9681][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 19:10:43.149580][info][9681][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 19:10:43.149613][info][9681][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 19:10:43.204020][info][9681][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 19:10:43.204649][info][9681][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 19:10:43.204657][info][9681][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 19:10:43.206505][info][9681][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 19:11:54.501944][info][9681][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x236AAA40
+[07/27 19:11:54.502297][info][9681][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:11:54.517872][info][9681][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:11:54.517883][info][9681][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:11:54.517995][info][9681][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:11:54.543878][info][9681][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:11:54.543889][info][9681][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:16:15.062407][info][10187][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 19:16:15.062476][info][10187][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 19:16:15.062481][info][10187][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:16:15.062487][info][10187][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 19:16:16.073775][info][10187][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 19:16:16.073815][info][10187][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:16:16.081377][info][10187][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 19:16:16.088933][info][10187][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 19:16:16.316394][info][10187][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 19:16:16.316486][info][10187][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x453DCB20
+[07/27 19:16:16.344573][info][10187][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 19:16:16.346480][info][10187][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 19:16:16.346507][info][10187][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 19:16:16.346533][info][10187][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 19:16:16.346546][info][10187][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 19:16:16.353407][info][10187][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 19:16:16.353441][info][10187][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 19:16:16.353451][info][10187][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 19:16:16.371599][info][10187][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 19:16:16.371609][info][10187][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 19:16:16.667953][info][10251][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 19:16:16.802540][info][10250][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 19:16:21.476814][warning][10252][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 19:16:21.670481][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.183706fps
+[07/27 19:16:21.680329][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.193884fps
+[07/27 19:16:21.824554][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.063322fps
+[07/27 19:16:21.825768][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.069510fps
+[07/27 19:16:24.577693][warning][10275][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**15 logs in 3100ms, last: 19:16:23.279949**]
+[07/27 19:16:26.677901][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:16:26.686938][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:16:26.847772][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:16:26.849162][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:16:31.685665][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:16:31.693643][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:16:31.870931][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:16:31.872288][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:16:36.692152][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:16:36.701176][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:16:36.894598][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:16:36.895940][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:16:41.699840][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:16:41.709641][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:16:41.917393][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:16:41.918731][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 19:16:46.708791][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:16:46.717384][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:16:46.940628][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:16:46.942012][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:16:51.716376][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:16:51.725034][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:16:51.963789][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:16:51.965169][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:16:56.724113][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:16:56.733047][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:16:56.987011][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:16:56.988040][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:17:01.730731][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:17:01.740001][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:17:02.010242][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:02.011593][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:17:06.738533][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:17:06.747837][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:17:07.033440][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:07.034785][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:17:11.747185][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:17:11.756186][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:17:12.056693][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:12.058053][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:17:16.754954][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:17:16.764961][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:17:17.079972][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:17:17.081407][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:17:21.762486][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:17:21.771329][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:17:22.103332][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:22.104564][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:17:26.769364][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:17:26.780409][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:17:27.126315][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:27.127654][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:17:31.776997][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:17:31.785683][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.990009fps
+[07/27 19:17:32.149565][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:32.150908][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:17:36.785587][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:17:36.795973][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.978048fps
+[07/27 19:17:37.172867][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:17:37.174231][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:17:41.793405][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:17:41.802962][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:17:42.195996][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:42.197338][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:17:46.799833][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:17:46.809029][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:17:47.219291][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:47.220829][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:17:51.807816][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:17:51.817430][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:17:52.242381][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:52.243706][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 19:17:56.816319][info][10251][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:17:56.825829][info][10252][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:17:57.265604][info][10250][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:17:57.266934][info][10255][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:18:01.202341][info][10187][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 19:18:01.202378][info][10187][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 19:18:01.202437][info][10187][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 19:18:01.336771][info][10187][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 19:18:01.337009][info][10187][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 19:18:01.337038][info][10187][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 19:18:01.392683][info][10187][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 19:18:01.393582][info][10187][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 19:18:01.393593][info][10187][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 19:18:01.395776][info][10187][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 19:19:23.303472][info][10187][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x453DCB20
+[07/27 19:19:23.303818][info][10187][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:19:23.319311][info][10187][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:19:23.319322][info][10187][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:19:23.319442][info][10187][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:19:23.346231][info][10187][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:19:23.346247][info][10187][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:23:01.519020][info][10564][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 19:23:01.519091][info][10564][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 19:23:01.519098][info][10564][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:23:01.519106][info][10564][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 19:23:02.526221][info][10564][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 19:23:02.526264][info][10564][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:23:02.539357][info][10564][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 19:23:02.547256][info][10564][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 19:23:02.776551][info][10564][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 19:23:02.776650][info][10564][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x215591D0
+[07/27 19:23:02.805161][info][10564][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 19:23:02.807005][info][10564][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 19:23:02.807029][info][10564][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 19:23:02.807056][info][10564][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 19:23:02.807071][info][10564][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 19:23:02.813573][info][10564][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 19:23:02.813602][info][10564][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 19:23:02.813612][info][10564][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 19:23:02.831675][info][10564][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 19:23:02.831680][info][10564][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 19:23:03.128134][info][10628][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 19:23:03.238780][warning][10627][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32533, expected=614400 @Color
+[07/27 19:23:03.298006][info][10627][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 19:23:06.241954][warning][10631][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32565, expected=614400 @Color [**8 logs in 3003ms, last: 19:23:03.264833**]
+[07/27 19:23:08.037914][warning][10629][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 19:23:08.128688][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.189810fps
+[07/27 19:23:08.234469][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.204082fps
+[07/27 19:23:08.256238][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=32.483059fps
+[07/27 19:23:08.321853][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.069510fps
+[07/27 19:23:11.134541][warning][10652][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**12 logs in 3096ms, last: 19:23:09.843115**]
+[07/27 19:23:13.136513][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:23:13.245253][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.978048fps
+[07/27 19:23:13.278943][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:23:13.345018][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:23:18.145259][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:23:18.254034][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:23:18.302064][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:23:18.368279][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:23:23.152968][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:23:23.263215][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:23:23.325245][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:23:23.391368][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:23:28.160556][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:23:28.269612][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:23:28.348412][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:23:28.414535][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:23:33.167154][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:23:33.276296][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:23:33.371873][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:23:33.438050][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:23:38.174710][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:23:38.284005][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:23:38.394759][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.864199fps
+[07/27 19:23:38.461519][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:23:43.183511][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:23:43.292138][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:23:43.417950][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:23:43.484003][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:23:48.191208][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:23:48.300526][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:23:48.441291][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:23:48.507156][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:23:53.198763][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:23:53.308389][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:23:53.464246][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:23:53.530340][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:23:58.205466][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:23:58.313981][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:23:58.487503][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:23:58.553639][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:24:03.213995][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:24:03.323315][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:24:03.510567][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:24:03.576800][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:24:08.221768][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:24:08.330257][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:24:08.533800][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:24:08.599864][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:24:13.229341][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:24:13.339201][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:24:13.558894][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.845770fps
+[07/27 19:24:13.623198][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:24:18.235935][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:24:18.345840][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:24:18.580029][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.870346fps
+[07/27 19:24:18.645941][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:24:23.243515][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:24:23.351849][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:24:23.603331][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:24:23.669847][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:24:28.252329][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:24:28.361045][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:24:28.626364][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:24:28.692282][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 19:24:33.259900][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:24:33.369034][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:24:33.649487][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:24:33.715562][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:24:38.267598][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:24:38.376509][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:24:38.672679][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:24:38.739110][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:24:43.274075][info][10628][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:24:43.383725][info][10629][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:24:43.695805][info][10627][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:24:43.762066][info][10633][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:24:45.854712][info][10564][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 19:24:45.854750][info][10564][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 19:24:45.854804][info][10564][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 19:24:45.987127][info][10564][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 19:24:45.987353][info][10564][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 19:24:45.987382][info][10564][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 19:24:46.040213][info][10564][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 19:24:46.040692][info][10564][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 19:24:46.040700][info][10564][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 19:24:46.042413][info][10564][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 19:26:07.833136][info][10564][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x215591D0
+[07/27 19:26:07.833481][info][10564][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:26:07.848837][info][10564][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:26:07.848845][info][10564][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:26:07.848947][info][10564][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:26:07.874497][info][10564][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:26:07.874510][info][10564][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:28:34.438399][info][10934][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 19:28:34.438461][info][10934][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 19:28:34.438467][info][10934][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:28:34.438474][info][10934][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 19:28:35.443746][info][10934][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 19:28:35.443783][info][10934][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:28:35.450825][info][10934][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 19:28:35.460245][info][10934][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 19:28:35.688506][info][10934][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 19:28:35.688597][info][10934][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0xF8E70F0
+[07/27 19:28:35.717034][info][10934][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 19:28:35.718914][info][10934][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 19:28:35.718940][info][10934][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 19:28:35.718966][info][10934][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 19:28:35.718980][info][10934][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 19:28:35.725628][info][10934][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 19:28:35.725656][info][10934][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 19:28:35.725664][info][10934][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 19:28:35.743802][info][10934][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 19:28:35.743815][info][10934][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 19:28:36.039976][info][11002][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 19:28:36.150547][warning][11001][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=65295, expected=614400 @Color
+[07/27 19:28:36.208578][info][11001][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 19:28:39.152109][warning][11005][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32647, expected=614400 @Color [**10 logs in 3001ms, last: 19:28:36.180950**]
+[07/27 19:28:40.949199][warning][11003][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 19:28:41.042181][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.183706fps
+[07/27 19:28:41.148561][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.200078fps
+[07/27 19:28:41.166004][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=32.894737fps
+[07/27 19:28:41.231873][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.069510fps
+[07/27 19:28:44.048814][warning][11027][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**16 logs in 3099ms, last: 19:28:42.854968**]
+[07/27 19:28:46.049726][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:28:46.158814][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.978048fps
+[07/27 19:28:46.189238][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:28:46.255261][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:28:51.057322][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:28:51.166040][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:28:51.212366][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:28:51.278392][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:28:56.063834][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:28:56.173680][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:28:56.235622][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:28:56.301671][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:01.071545][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:29:01.179965][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:29:01.258609][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:01.324835][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:29:06.080125][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:29:06.189959][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.980040fps
+[07/27 19:29:06.281736][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:06.347909][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:11.087788][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:29:11.197285][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:29:11.304973][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:29:11.370990][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:16.095533][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:29:16.205256][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:29:16.349584][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:16.394129][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:21.101966][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:29:21.211256][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:29:21.372884][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:21.417301][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:26.109638][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:29:26.218242][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:29:26.374332][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:26.440507][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:31.118382][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:29:31.228799][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.978048fps
+[07/27 19:29:31.397491][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:31.463604][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:36.125925][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:29:36.234769][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:29:36.420611][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:36.486707][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:41.132512][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:29:41.241871][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:29:41.443738][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:41.509868][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:29:46.140114][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:29:46.248973][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:29:46.466991][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:29:46.533346][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:51.148818][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:29:51.257454][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:29:51.490152][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:51.555808][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:29:56.156477][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:29:56.265346][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:29:56.513153][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:29:56.582803][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.833500fps
+[07/27 19:30:01.164000][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:30:01.273225][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:30:01.536403][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:30:01.602572][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.882647fps
+[07/27 19:30:06.170455][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:30:06.279389][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:30:06.559422][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:30:06.625809][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:30:11.178145][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:30:11.286853][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:30:11.582786][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:30:11.648687][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 19:30:16.186797][info][11002][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:30:16.295841][info][11003][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:30:16.605696][info][11001][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:30:16.672089][info][11007][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:30:20.776284][info][10934][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 19:30:20.776322][info][10934][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 19:30:20.776382][info][10934][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 19:30:20.907580][info][10934][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 19:30:20.907849][info][10934][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 19:30:20.907882][info][10934][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 19:30:20.961118][info][10934][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 19:30:20.961631][info][10934][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 19:30:20.961643][info][10934][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 19:30:20.963454][info][10934][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 19:31:42.878907][info][10934][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0xF8E70F0
+[07/27 19:31:42.879238][info][10934][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:31:42.894875][info][10934][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:31:42.894887][info][10934][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:31:42.895000][info][10934][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:31:42.921709][info][10934][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:31:42.921724][info][10934][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:49:08.690322][info][12580][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 19:49:08.690396][info][12580][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 19:49:08.690403][info][12580][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:49:08.690411][info][12580][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 19:49:09.700254][info][12580][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 19:49:09.700295][info][12580][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:49:09.708926][info][12580][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 19:49:09.717986][info][12580][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 19:49:09.946610][info][12580][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 19:49:09.946703][info][12580][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x3C599CC0
+[07/27 19:49:09.974490][info][12580][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 19:49:09.976406][info][12580][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 19:49:09.976432][info][12580][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 19:49:09.976458][info][12580][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 19:49:09.976472][info][12580][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 19:49:09.982688][info][12580][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 19:49:09.982714][info][12580][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 19:49:09.982723][info][12580][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 19:49:10.001082][info][12580][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 19:49:10.001109][info][12580][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 19:49:10.296726][info][12643][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 19:49:10.430409][info][12642][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 19:49:15.109457][warning][12644][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 19:49:15.298956][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.183706fps
+[07/27 19:49:15.306953][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.197961fps
+[07/27 19:49:15.452524][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.063322fps
+[07/27 19:49:15.453883][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.063322fps
+[07/27 19:49:18.206141][warning][12668][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**21 logs in 3096ms, last: 19:49:17.510409**]
+[07/27 19:49:20.306686][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:49:20.315322][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:49:20.475737][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:49:20.477090][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:49:25.314257][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:49:25.322979][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:49:25.498729][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:49:25.500031][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:49:30.320815][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:49:30.329945][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:49:30.521952][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:49:30.523230][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:49:35.328369][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:49:35.337283][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:49:35.544989][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:49:35.546313][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:49:40.337191][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:49:40.346264][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:49:40.568170][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:49:40.569474][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:49:45.344655][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:49:45.353362][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:49:45.591543][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:49:45.592905][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:49:50.352289][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:49:50.361244][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:49:50.614447][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:49:50.615773][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:49:55.358717][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:49:55.367625][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:49:55.637509][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:49:55.638933][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:50:00.366343][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:50:00.375010][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:50:00.660569][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:00.661740][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 19:50:05.375045][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:50:05.384383][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:50:05.684037][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:50:05.685467][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:50:10.382662][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:50:10.391533][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:50:10.706859][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:10.708160][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:50:15.390255][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:50:15.399400][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:50:15.730162][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:15.731958][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:50:20.396811][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:50:20.405466][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:50:20.753048][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:20.754590][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 19:50:24.836340][warning][12642][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=614394, expected=614400 @Color
+[07/27 19:50:25.404437][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:50:25.413611][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:50:25.776256][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:25.777600][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.658970fps
+[07/27 19:50:30.412874][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:50:30.422168][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:50:30.799291][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:30.800856][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:50:35.420670][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:50:35.429534][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:50:35.822499][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:35.823841][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:50:40.427035][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:50:40.435956][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:50:40.845451][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:40.846798][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:50:45.434655][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:50:45.443734][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:50:45.868715][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:45.869842][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:50:50.443360][info][12643][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:50:50.452966][info][12644][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.980040fps
+[07/27 19:50:50.891716][info][12642][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:50:50.893130][info][12647][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:50:54.628276][info][12580][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 19:50:54.628319][info][12580][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 19:50:54.628374][info][12580][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 19:50:54.759796][info][12580][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 19:50:54.760003][info][12580][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 19:50:54.760032][info][12580][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 19:50:54.811862][info][12580][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 19:50:54.812375][info][12580][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 19:50:54.812383][info][12580][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 19:50:54.814185][info][12580][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 19:52:17.120251][info][12580][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x3C599CC0
+[07/27 19:52:17.120602][info][12580][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:52:17.135986][info][12580][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:52:17.135995][info][12580][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:52:17.136095][info][12580][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:52:17.164939][info][12580][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:52:17.164956][info][12580][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:53:29.938726][info][13073][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 19:53:29.938803][info][13073][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 19:53:29.938809][info][13073][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:53:29.938816][info][13073][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 19:53:30.944369][info][13073][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 19:53:30.944412][info][13073][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:53:30.954374][info][13073][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 19:53:30.964394][info][13073][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 19:53:31.192330][info][13073][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 19:53:31.192439][info][13073][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x462D24D0
+[07/27 19:53:31.220575][info][13073][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 19:53:31.222430][info][13073][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 19:53:31.222456][info][13073][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 19:53:31.222483][info][13073][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 19:53:31.222497][info][13073][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 19:53:31.228808][info][13073][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 19:53:31.228836][info][13073][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 19:53:31.228846][info][13073][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 19:53:31.246718][info][13073][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 19:53:31.246729][info][13073][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 19:53:31.543325][info][13141][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 19:53:31.678237][info][13140][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 19:53:36.355131][warning][13142][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 19:53:36.545021][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=10.185740fps
+[07/27 19:53:36.651281][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.200078fps
+[07/27 19:53:36.701304][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.057138fps
+[07/27 19:53:36.702253][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.069510fps
+[07/27 19:53:39.451045][warning][13164][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**13 logs in 3095ms, last: 19:53:38.257276**]
+[07/27 19:53:41.551495][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:53:41.660358][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:53:41.723726][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.864199fps
+[07/27 19:53:41.725103][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:53:46.559216][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:53:46.667795][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:53:46.746955][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:53:46.748314][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:53:51.567881][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:53:51.676854][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:53:51.769891][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:53:51.771174][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:53:56.575401][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:53:56.685036][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:53:56.793073][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:53:56.794438][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:01.583073][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:54:01.692147][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:54:01.816385][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:01.819395][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.845770fps
+[07/27 19:54:06.589576][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:54:06.698350][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:54:06.839249][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:06.840603][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.870346fps
+[07/27 19:54:11.597069][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:54:11.705989][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:54:11.862392][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:11.863696][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:16.605793][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:54:16.715111][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:54:16.885464][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:16.886834][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:54:21.613409][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:54:21.722773][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:54:21.908506][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:21.909853][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:26.621064][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:54:26.730288][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:54:26.931674][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:26.933023][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:31.627544][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:54:31.738119][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:54:31.954918][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:54:31.956165][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:36.635032][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:54:36.740946][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.994004fps
+[07/27 19:54:36.977877][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:36.979177][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:41.643706][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:54:41.753782][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.974068fps
+[07/27 19:54:42.001045][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:42.002593][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:46.651507][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:54:46.760656][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:54:47.024078][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:47.025588][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:51.657906][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:54:51.766600][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:54:52.047272][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:52.048601][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:54:56.665350][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:54:56.774453][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:54:57.070301][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:54:57.071253][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:55:01.672912][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:55:01.783455][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:55:02.093392][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:55:02.094768][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:55:06.681796][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:55:06.792545][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:55:07.116392][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:55:07.117190][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 19:55:11.689323][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:55:11.798086][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:55:12.139771][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:55:12.141210][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:55:16.696881][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:55:16.805548][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:55:17.162780][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:55:17.164101][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:55:21.703287][info][13141][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 19:55:21.811988][info][13142][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:55:22.185842][info][13140][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:55:22.187216][info][13145][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:55:23.697593][info][13073][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 19:55:23.697634][info][13073][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 19:55:23.697690][info][13073][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 19:55:23.827803][warning][13140][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Frame.cpp(85)
+ - msg: Update data size(622268) > data buffer size! (614400)
+ - type: MEMORY
+ - status: 104
+[07/27 19:55:23.827855][info][13073][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 19:55:23.828141][info][13073][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 19:55:23.828176][info][13073][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 19:55:23.828484][warning][13140][ObLibuvcDevicePort.cpp:469] Execute failure! A libobsensor_exception has occurred!
+ - where: ObLibuvcDevicePort.cpp(469):onFrameCallback
+ - msg: Update data size(622268) > data buffer size! (614400)
+ - type: N11libobsensor23unrecoverable_exceptionE
+ - status: 104
+[07/27 19:55:23.881218][info][13073][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 19:55:23.881693][info][13073][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 19:55:23.881702][info][13073][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 19:55:23.883378][info][13073][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 19:56:54.203680][info][13073][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x462D24D0
+[07/27 19:56:54.204017][info][13073][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:56:54.219452][info][13073][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:56:54.219465][info][13073][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:56:54.219583][info][13073][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 19:56:54.249500][info][13073][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 19:56:54.249516][info][13073][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 19:59:16.846737][info][13473][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 19:59:16.846804][info][13473][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 19:59:16.846809][info][13473][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:59:16.846815][info][13473][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 19:59:17.854727][info][13473][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 19:59:17.854763][info][13473][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 19:59:17.864574][info][13473][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 19:59:17.871562][info][13473][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 19:59:18.099457][info][13473][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 19:59:18.099570][info][13473][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x10800260
+[07/27 19:59:18.127528][info][13473][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 19:59:18.129462][info][13473][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 19:59:18.129492][info][13473][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 19:59:18.129518][info][13473][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 19:59:18.129533][info][13473][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 19:59:18.135776][info][13473][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 19:59:18.135803][info][13473][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 19:59:18.135812][info][13473][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 19:59:18.154195][info][13473][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 19:59:18.154203][info][13473][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 19:59:18.368848][warning][13537][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32722, expected=814080 @Depth
+[07/27 19:59:18.544558][warning][13537][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Frame.cpp(85)
+ - msg: Update data size(1037370) > data buffer size! (814080)
+ - type: MEMORY
+ - status: 104
+[07/27 19:59:18.545199][warning][13537][ObLibuvcDevicePort.cpp:469] Execute failure! A libobsensor_exception has occurred!
+ - where: ObLibuvcDevicePort.cpp(469):onFrameCallback
+ - msg: Update data size(1037370) > data buffer size! (814080)
+ - type: N11libobsensor23unrecoverable_exceptionE
+ - status: 104
+[07/27 19:59:18.563139][warning][13536][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=130718, expected=614400 @Color
+[07/27 19:59:18.617595][warning][13536][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Frame.cpp(85)
+ - msg: Update data size(638768) > data buffer size! (614400)
+ - type: MEMORY
+ - status: 104
+[07/27 19:59:18.617738][warning][13536][ObLibuvcDevicePort.cpp:469] Execute failure! A libobsensor_exception has occurred!
+ - where: ObLibuvcDevicePort.cpp(469):onFrameCallback
+ - msg: Update data size(638768) > data buffer size! (614400)
+ - type: N11libobsensor23unrecoverable_exceptionE
+ - status: 104
+[07/27 19:59:18.649727][info][13537][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 19:59:18.650021][info][13536][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 19:59:21.375438][warning][13538][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=65457, expected=814080 @Depth [**13 logs in 3006ms, last: 19:59:18.422485**]
+[07/27 19:59:21.573985][warning][13539][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=97996, expected=614400 @Color [**5 logs in 3010ms, last: 19:59:18.584481**]
+[07/27 19:59:23.359254][warning][13540][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 19:59:23.451261][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=12.396695fps
+[07/27 19:59:23.575443][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.723862fps
+[07/27 19:59:23.673716][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.075697fps
+[07/27 19:59:23.759405][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.200078fps
+[07/27 19:59:26.458608][warning][13563][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**15 logs in 3099ms, last: 19:59:25.162689**]
+[07/27 19:59:28.459959][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:59:28.598755][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:59:28.697201][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:59:28.770621][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.978048fps
+[07/27 19:59:33.467553][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:59:33.621734][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:59:33.720315][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:59:33.777530][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:59:38.474128][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:59:38.645086][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 19:59:38.743438][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:59:38.783388][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 19:59:43.481663][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:59:43.668021][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:59:43.766620][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:59:43.790866][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 19:59:48.490438][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 19:59:48.691232][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:59:48.789765][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 19:59:48.798405][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 19:59:53.497966][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 19:59:53.714225][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 19:59:53.807506][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 19:59:53.813143][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 19:59:58.505589][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 19:59:58.740461][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.839634fps
+[07/27 19:59:58.817200][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.980040fps
+[07/27 19:59:58.835716][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.864199fps
+[07/27 20:00:03.511958][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:00:03.760456][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.876493fps
+[07/27 20:00:03.821505][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.992006fps
+[07/27 20:00:03.859154][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 20:00:08.519637][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:00:08.783616][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:08.828638][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:00:08.882118][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:13.528434][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 20:00:13.806679][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:13.837550][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 20:00:13.905480][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:18.535851][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:00:18.829923][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 20:00:18.845218][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 20:00:18.928336][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:23.543481][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:00:23.852899][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 20:00:23.852933][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:23.951159][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:28.549965][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:00:28.858834][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 20:00:28.876026][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:28.974506][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:33.557712][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:00:33.868164][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 20:00:33.899145][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:33.997648][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:38.566145][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 20:00:38.875949][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 20:00:38.922220][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:39.020918][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 20:00:43.573821][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:00:43.883289][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:00:43.945520][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:44.044081][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:48.581394][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:00:48.891340][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 20:00:48.968455][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:49.067287][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:53.588021][info][13537][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:00:53.896833][info][13540][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 20:00:53.991627][info][13536][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:00:54.090297][info][13542][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:00:56.669955][info][13473][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 20:00:56.669994][info][13473][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 20:00:56.670052][info][13473][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 20:00:56.801578][info][13473][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 20:00:56.802094][info][13473][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 20:00:56.802132][info][13473][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 20:00:56.856990][info][13473][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 20:00:56.857459][info][13473][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 20:00:56.857466][info][13473][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 20:00:56.859205][info][13473][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 20:02:14.648570][info][13473][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x10800260
+[07/27 20:02:14.649004][info][13473][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 20:02:14.664308][info][13473][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 20:02:14.664317][info][13473][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 20:02:14.664419][info][13473][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 20:02:14.690902][info][13473][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 20:02:14.690915][info][13473][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 20:03:32.182834][info][13828][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[07/27 20:03:32.182899][info][13828][DeviceManager.cpp:25] Current found device(s): (1)
+[07/27 20:03:32.182905][info][13828][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 20:03:32.182911][info][13828][DeviceManager.cpp:405] Enable net device enumeration: true
+[07/27 20:03:33.187873][info][13828][DeviceManager.cpp:25] Current device(s) list: (1)
+[07/27 20:03:33.187915][info][13828][DeviceManager.cpp:34] 	- Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T, Connection: USB2.1
+[07/27 20:03:33.198486][info][13828][G330Device.cpp:566] UVCAutoRebootOnFault=true for device: Gemini 336
+[07/27 20:03:33.205503][info][13828][DeviceBase.cpp:665] key: IspFwVer,value:20240523
+[07/27 20:03:33.432971][info][13828][DeviceManager.cpp:199] Device created successfully! Name: Gemini 336, PID: 0x0803, SN/ID: CP7JC420008T FW: 1.2.81
+[07/27 20:03:33.433069][info][13828][Pipeline.cpp:54] [CP7JC420008T] Pipeline created with device: {name: Gemini 336, sn: CP7JC420008T}, @0x44D83CE0
+[07/27 20:03:33.461153][info][13828][Pipeline.cpp:228] [CP7JC420008T] Check and set config done!
+[07/27 20:03:33.463034][info][13828][Pipeline.cpp:266] [CP7JC420008T] Try to start streams!
+[07/27 20:03:33.463070][info][13828][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Color, format: RGB, width: 640, height: 480, fps: 30}
+[07/27 20:03:33.463098][info][13828][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Color
+[07/27 20:03:33.463112][info][13828][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Color, format: YUYV, width: 640, height: 480, fps: 30}
+[07/27 20:03:33.469367][info][13828][VideoSensor.cpp:58] [CP7JC420008T] Try to start stream: {type: Depth, format: Y16, width: 848, height: 480, fps: 10}
+[07/27 20:03:33.469395][info][13828][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPED to STARTING@Depth
+[07/27 20:03:33.469404][info][13828][VideoSensor.cpp:127] [CP7JC420008T] Start backend stream: {type: Depth, format: Z16, width: 848, height: 480, fps: 10}
+[07/27 20:03:33.487410][info][13828][Pipeline.cpp:293] [CP7JC420008T] Start streams done!
+[07/27 20:03:33.487418][info][13828][Pipeline.cpp:250] [CP7JC420008T] Pipeline start done!
+[07/27 20:03:33.705820][warning][13895][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32528, expected=814080 @Depth
+[07/27 20:03:33.877749][warning][13895][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Frame.cpp(85)
+ - msg: Update data size(1004699) > data buffer size! (814080)
+ - type: MEMORY
+ - status: 104
+[07/27 20:03:33.878295][warning][13895][ObLibuvcDevicePort.cpp:469] Execute failure! A libobsensor_exception has occurred!
+ - where: ObLibuvcDevicePort.cpp(469):onFrameCallback
+ - msg: Update data size(1004699) > data buffer size! (814080)
+ - type: N11libobsensor23unrecoverable_exceptionE
+ - status: 104
+[07/27 20:03:33.913110][warning][13894][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=65504, expected=614400 @Color
+[07/27 20:03:33.955796][warning][13894][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Frame.cpp(85)
+ - msg: Update data size(704276) > data buffer size! (614400)
+ - type: MEMORY
+ - status: 104
+[07/27 20:03:33.955949][warning][13894][ObLibuvcDevicePort.cpp:469] Execute failure! A libobsensor_exception has occurred!
+ - where: ObLibuvcDevicePort.cpp(469):onFrameCallback
+ - msg: Update data size(704276) > data buffer size! (614400)
+ - type: N11libobsensor23unrecoverable_exceptionE
+ - status: 104
+[07/27 20:03:33.983028][info][13895][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Depth
+[07/27 20:03:33.988045][info][13894][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STARTING to STREAMING@Color
+[07/27 20:03:36.706445][warning][13896][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32581, expected=814080 @Depth [**12 logs in 3000ms, last: 20:03:33.758826**]
+[07/27 20:03:36.916955][warning][13897][VideoSensor.cpp:199] [CP7JC420008T] This frame will be dropped because the data size does not match the expectation! size=32752, expected=614400 @Color [**4 logs in 3003ms, last: 20:03:33.920349**]
+[07/27 20:03:38.695158][warning][13898][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset!
+[07/27 20:03:38.784431][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=12.209531fps
+[07/27 20:03:38.945972][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=31.591496fps
+[07/27 20:03:39.012394][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=31.063322fps
+[07/27 20:03:39.093768][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=10.192081fps
+[07/27 20:03:41.790580][warning][13921][Pipeline.cpp:324] [CP7JC420008T] Output frameset queue is full, drop oldest frameset! [**18 logs in 3095ms, last: 20:03:40.795399**]
+[07/27 20:03:43.793175][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 20:03:43.969273][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:03:44.035191][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:03:44.104534][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.980040fps
+[07/27 20:03:48.800728][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:03:48.992234][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:03:49.058405][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:03:49.110011][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 20:03:53.807365][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:03:54.015375][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:03:54.081437][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:03:54.117269][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:03:58.815979][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 20:03:59.039896][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.845770fps
+[07/27 20:03:59.104781][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 20:03:59.124117][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:04:03.823606][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:04:04.061589][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.870346fps
+[07/27 20:04:04.127840][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:04.133553][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 20:04:08.831199][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:04:09.084664][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:04:09.140662][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:04:09.150944][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:13.838804][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:04:14.107823][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 20:04:14.148940][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 20:04:14.173914][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:18.845345][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 20:04:19.130896][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:04:19.154893][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.988014fps
+[07/27 20:04:19.197177][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:23.852916][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:04:24.154069][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:04:24.161978][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:04:24.219828][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:28.861497][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:04:29.171580][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 20:04:29.177126][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:04:29.243435][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:33.869196][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:04:34.178653][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:04:34.200329][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:04:34.266295][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:38.875703][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.988014fps
+[07/27 20:04:39.184888][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:04:39.223333][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:04:39.289184][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:43.883189][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:04:44.192135][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.986020fps
+[07/27 20:04:44.246484][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:04:44.312626][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:48.891928][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.982033fps
+[07/27 20:04:49.201244][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.982033fps
+[07/27 20:04:49.269580][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:04:49.335683][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:04:53.899524][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:04:54.208937][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 20:04:54.292953][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 20:04:54.358783][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.851910fps
+[07/27 20:04:58.905946][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:04:59.217038][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 20:04:59.315784][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.864199fps
+[07/27 20:04:59.381984][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:05:03.913576][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.986020fps
+[07/27 20:05:04.222464][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.990009fps
+[07/27 20:05:04.339272][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.851910fps
+[07/27 20:05:04.404999][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:05:08.921263][info][13895][VideoSensor.cpp:153] [CP7JC420008T] Depth backend frame callback, frameRate=9.984026fps
+[07/27 20:05:09.230432][info][13898][SensorBase.cpp:379] [CP7JC420008T] Depth Streaming... frameRate=9.984026fps
+[07/27 20:05:09.362051][info][13894][VideoSensor.cpp:153] [CP7JC420008T] Color backend frame callback, frameRate=30.858055fps
+[07/27 20:05:09.428098][info][13900][SensorBase.cpp:379] [CP7JC420008T] Color Streaming... frameRate=30.858055fps
+[07/27 20:05:12.012687][info][13828][Pipeline.cpp:367] [CP7JC420008T] Try to stop pipeline!
+[07/27 20:05:12.012725][info][13828][Pipeline.cpp:343] [CP7JC420008T] Try to stop streams!
+[07/27 20:05:12.012813][info][13828][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Depth
+[07/27 20:05:12.142918][info][13828][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Depth
+[07/27 20:05:12.143134][info][13828][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Depth
+[07/27 20:05:12.143163][info][13828][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STREAMING to STOPPING@Color
+[07/27 20:05:12.194545][info][13828][SensorBase.cpp:210] [CP7JC420008T] Stream state changed from STOPPING to STOPPED@Color
+[07/27 20:05:12.195009][info][13828][Pipeline.cpp:357] [CP7JC420008T] Sensor stream stopped, sensorType=Color
+[07/27 20:05:12.195017][info][13828][Pipeline.cpp:363] [CP7JC420008T] Stop streams done!
+[07/27 20:05:12.196821][info][13828][Pipeline.cpp:392] [CP7JC420008T] Stop pipeline done!
+[07/27 20:06:30.548333][info][13828][Pipeline.cpp:65] [CP7JC420008T] Pipeline destroyed! @0x44D83CE0
+[07/27 20:06:30.548675][info][13828][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 20:06:30.564406][info][13828][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 20:06:30.564417][info][13828][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[07/27 20:06:30.564527][info][13828][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
+[07/27 20:06:30.590015][info][13828][ObLibuvcDevicePort.cpp:87] uvc_close done.
+[07/27 20:06:30.590028][info][13828][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done

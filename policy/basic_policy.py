@@ -7,7 +7,7 @@ import shlex
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional, Sequence
+from typing import Literal, Optional
 
 from hardware.utils import (
     ALL_CELLS,
@@ -15,12 +15,61 @@ from hardware.utils import (
     GAIN_VALUES,
     LIGHT_STATE_COUNT,
     MOTION_STATE_COUNT,
-    CellStats,
     ContextKey,
     ContextState,
     QScore,
     SensorCell,
 )
+
+SQRT_TWO = math.sqrt(2.0)
+SQRT_TWO_PI = math.sqrt(2.0 * math.pi)
+NEAR_ZERO_STD = 1e-12
+
+
+def normal_cdf(z: float) -> float:
+    return 0.5 * (1.0 + math.erf(z / SQRT_TWO))
+
+
+def normal_pdf(z: float) -> float:
+    return math.exp(-0.5 * z * z) / SQRT_TWO_PI
+
+
+def probability_of_improvement(
+    candidate_mean: float,
+    candidate_variance: float,
+    best_mean: float,
+    best_variance: float,
+    practical_margin: float,
+) -> float:
+    combined_variance = max(candidate_variance + best_variance, 0.0)
+    difference = best_mean - practical_margin - candidate_mean
+    standard_deviation = math.sqrt(combined_variance)
+    if standard_deviation <= NEAR_ZERO_STD:
+        if difference > 0.0:
+            return 1.0
+        if difference < 0.0:
+            return 0.0
+        return 0.5
+    return normal_cdf(difference / standard_deviation)
+
+
+def expected_improvement(
+    candidate_mean: float,
+    candidate_variance: float,
+    best_mean: float,
+    best_variance: float,
+    practical_margin: float,
+) -> float:
+    combined_variance = max(candidate_variance + best_variance, 0.0)
+    difference = best_mean - practical_margin - candidate_mean
+    standard_deviation = math.sqrt(combined_variance)
+    if standard_deviation <= NEAR_ZERO_STD:
+        return max(difference, 0.0)
+    z_value = difference / standard_deviation
+    return (
+        difference * normal_cdf(z_value)
+        + standard_deviation * normal_pdf(z_value)
+    )
 
 
 @dataclass
@@ -112,6 +161,15 @@ class PolicyDecision:
     score: QScore
 
 
+@dataclass(frozen=True)
+class BeliefUpdate:
+    belief_mean: float
+    belief_variance: float
+    scene_epoch: int
+    scene_change_z: Optional[float]
+    scene_change_detected: bool
+
+
 class ATIMDECameraProbingController:
     """Deterministic camera policy driven by predicted bias and uncertainty.
 
@@ -125,15 +183,29 @@ class ATIMDECameraProbingController:
         safety_policy: SafetyPolicy,
         *,
         cells_per_probe: int = 4,
+        min_initial_probes: int = 0,
         ema_alpha: float = 0.3,
         switch_margin: float = 0.01,
         low_bias_threshold: float = 0.12,
         high_bias_threshold: float = 0.20,
         probe_std_threshold: float = 0.08,
+        ei_practical_margin: float = 0.01,
+        ei_probe_cost: float = 0.001,
+        confidence_z: float = 1.96,
+        good_enough_probability: float = 0.95,
+        scene_change_z_threshold: float = 3.0,
+        scene_change_confirmations: int = 2,
+        scene_variance_inflation: float = 4.0,
+        scene_reset_variance: float = 0.01,
+        unobserved_prior_mean: Optional[float] = None,
+        unobserved_prior_variance: float = 0.04,
+        belief_variance_floor: float = 1e-6,
         offload_command: Optional[str] = None,
     ) -> None:
         if cells_per_probe < 1:
             raise ValueError("cells_per_probe must be positive.")
+        if min_initial_probes < 0:
+            raise ValueError("min_initial_probes must be non-negative.")
         if not 0.0 < ema_alpha <= 1.0:
             raise ValueError("ema_alpha must be in (0, 1].")
         if switch_margin < 0.0:
@@ -144,14 +216,65 @@ class ATIMDECameraProbingController:
             )
         if not 0.001 <= probe_std_threshold <= 0.5:
             raise ValueError("probe_std_threshold must be in [0.001, 0.5].")
+        if ei_practical_margin < 0.0:
+            raise ValueError("ei_practical_margin must be non-negative.")
+        if ei_probe_cost < 0.0:
+            raise ValueError("ei_probe_cost must be non-negative.")
+        if confidence_z < 0.0:
+            raise ValueError("confidence_z must be non-negative.")
+        if not 0.0 < good_enough_probability <= 1.0:
+            raise ValueError("good_enough_probability must be in (0, 1].")
+        if scene_change_z_threshold <= 0.0:
+            raise ValueError("scene_change_z_threshold must be positive.")
+        if scene_change_confirmations < 1:
+            raise ValueError("scene_change_confirmations must be positive.")
+        if scene_variance_inflation < 1.0:
+            raise ValueError("scene_variance_inflation must be at least 1.")
+        if scene_reset_variance <= 0.0:
+            raise ValueError("scene_reset_variance must be positive.")
+        if unobserved_prior_mean is None:
+            unobserved_prior_mean = high_bias_threshold
+        if not math.isfinite(unobserved_prior_mean):
+            raise ValueError("unobserved_prior_mean must be finite.")
+        if unobserved_prior_variance <= 0.0:
+            raise ValueError("unobserved_prior_variance must be positive.")
+        if belief_variance_floor <= 0.0:
+            raise ValueError("belief_variance_floor must be positive.")
+        if not all(
+            math.isfinite(value)
+            for value in (
+                ei_practical_margin,
+                ei_probe_cost,
+                confidence_z,
+                good_enough_probability,
+                scene_change_z_threshold,
+                scene_variance_inflation,
+                scene_reset_variance,
+                unobserved_prior_variance,
+                belief_variance_floor,
+            )
+        ):
+            raise ValueError("Sequential probing parameters must be finite.")
 
         self.safety_policy = safety_policy
         self.cells_per_probe = cells_per_probe
+        self.min_initial_probes = min_initial_probes
         self.ema_alpha = ema_alpha
         self.switch_margin = switch_margin
         self.low_bias_threshold = low_bias_threshold
         self.high_bias_threshold = high_bias_threshold
         self.probe_std_threshold = probe_std_threshold
+        self.ei_practical_margin = ei_practical_margin
+        self.ei_probe_cost = ei_probe_cost
+        self.confidence_z = confidence_z
+        self.good_enough_probability = good_enough_probability
+        self.scene_change_z_threshold = scene_change_z_threshold
+        self.scene_change_confirmations = scene_change_confirmations
+        self.scene_variance_inflation = scene_variance_inflation
+        self.scene_reset_variance = scene_reset_variance
+        self.unobserved_prior_mean = float(unobserved_prior_mean)
+        self.unobserved_prior_variance = unobserved_prior_variance
+        self.belief_variance_floor = belief_variance_floor
         self.offload_command = offload_command
         self.context_states: dict[str, ContextState] = {}
 
@@ -165,18 +288,78 @@ class ATIMDECameraProbingController:
     def _std(score: QScore) -> float:
         if score.uncertainty is None or not math.isfinite(score.uncertainty):
             raise ValueError("QScore.uncertainty must contain the finite model std.")
-        return float(score.uncertainty)
+        standard_deviation = float(score.uncertainty)
+        if standard_deviation < 0.0:
+            raise ValueError("QScore.uncertainty must be non-negative.")
+        return standard_deviation
 
     def _state_for(self, context: ContextKey) -> ContextState:
         return self.context_states.setdefault(context.table_key, ContextState())
 
-    def observe(self, context: ContextKey, cell: SensorCell, score: QScore) -> None:
+    def observe(
+        self, context: ContextKey, cell: SensorCell, score: QScore
+    ) -> BeliefUpdate:
         context.validate()
         state = self._state_for(context)
-        state.cells[cell.cell_id].update(
+        safe_cells = self.safety_policy.safe_cells(context)
+        if cell not in safe_cells:
+            raise ValueError(
+                f"Cannot observe unsafe cell {cell.cell_id} for {context.table_key}."
+            )
+
+        stats = state.cells[cell.cell_id]
+        observation_variance = max(
+            self._std(score) ** 2,
+            self.belief_variance_floor,
+        )
+        camera_bias = self._bias(score)
+        scene_change_z: Optional[float] = None
+        scene_change_detected = False
+        if stats.belief_mean is not None and stats.belief_variance is not None:
+            innovation_variance = max(
+                stats.belief_variance + observation_variance,
+                self.belief_variance_floor,
+            )
+            scene_change_z = abs(camera_bias - stats.belief_mean) / math.sqrt(
+                innovation_variance
+            )
+            if scene_change_z >= self.scene_change_z_threshold:
+                state.scene_change_streak += 1
+            else:
+                state.scene_change_streak = 0
+
+            if state.scene_change_streak >= self.scene_change_confirmations:
+                state.scene_epoch += 1
+                state.scene_change_streak = 0
+                scene_change_detected = True
+                for safe_cell in safe_cells:
+                    safe_stats = state.cells[safe_cell.cell_id]
+                    if (
+                        safe_stats.belief_mean is not None
+                        and safe_stats.belief_variance is not None
+                    ):
+                        safe_stats.belief_variance = max(
+                            safe_stats.belief_variance
+                            * self.scene_variance_inflation,
+                            self.scene_reset_variance,
+                        )
+
+        stats.update(
             score,
             alpha=self.ema_alpha,
             cycle_index=state.committed_cycles,
+            observation_variance=observation_variance,
+            variance_floor=self.belief_variance_floor,
+            scene_epoch=state.scene_epoch,
+        )
+        assert stats.belief_mean is not None
+        assert stats.belief_variance is not None
+        return BeliefUpdate(
+            belief_mean=stats.belief_mean,
+            belief_variance=stats.belief_variance,
+            scene_epoch=state.scene_epoch,
+            scene_change_z=scene_change_z,
+            scene_change_detected=scene_change_detected,
         )
 
     def decide(self, cell: SensorCell, score: QScore) -> PolicyDecision:
@@ -201,63 +384,189 @@ class ATIMDECameraProbingController:
             return fallback
         return safe_cells[0]
 
-    def select_probe_cells(
-        self, context: ContextKey, current_cell: SensorCell
-    ) -> list[SensorCell]:
+    def belief(
+        self, context: ContextKey, cell: SensorCell
+    ) -> tuple[float, float]:
         state = self._state_for(context)
-        safe_cells = [
-            cell
-            for cell in self.safety_policy.safe_cells(context)
-            if cell != current_cell
-        ]
-        if not safe_cells:
-            return []
+        stats = state.cells[cell.cell_id]
+        if stats.belief_mean is None or stats.belief_variance is None:
+            return self.unobserved_prior_mean, self.unobserved_prior_variance
+        return stats.belief_mean, stats.belief_variance
 
-        unobserved = [
-            cell for cell in safe_cells if state.cells[cell.cell_id].count == 0
-        ]
-        selected = unobserved[: self.cells_per_probe]
-        selected_ids = {cell.cell_id for cell in selected}
-        while len(selected) < min(self.cells_per_probe, len(safe_cells)):
-            cell = safe_cells[state.round_robin_pointer % len(safe_cells)]
-            state.round_robin_pointer = (
-                state.round_robin_pointer + 1
-            ) % len(safe_cells)
-            if cell.cell_id not in selected_ids:
-                selected.append(cell)
-                selected_ids.add(cell.cell_id)
-        return selected
+    def posterior_best(self, context: ContextKey) -> SensorCell:
+        safe_cells = self.safety_policy.safe_cells(context)
+        return min(
+            safe_cells,
+            key=lambda cell: (
+                self.belief(context, cell)[0],
+                ALL_CELLS.index(cell),
+            ),
+        )
 
-    def resolve_probe(
+    def observed_in_current_scene(
+        self, context: ContextKey, cell: SensorCell
+    ) -> bool:
+        state = self._state_for(context)
+        return (
+            state.cells[cell.cell_id].last_scene_epoch
+            == state.scene_epoch
+        )
+
+    def minimum_initial_probes_remaining(self, context: ContextKey) -> int:
+        safe_cells = self.safety_policy.safe_cells(context)
+        # The initial frame already observes one cell. Require up to
+        # min_initial_probes additional distinct safe-cell observations.
+        target_observed_cells = min(
+            len(safe_cells),
+            self.min_initial_probes + 1,
+        )
+        observed_cells = sum(
+            self.observed_in_current_scene(context, cell)
+            for cell in safe_cells
+        )
+        return max(target_observed_cells - observed_cells, 0)
+
+    def select_next_probe_cell(
         self,
         context: ContextKey,
-        current_cell: SensorCell,
-        observations: Sequence[tuple[SensorCell, QScore]],
-    ) -> PolicyDecision:
-        if not observations:
-            raise ValueError("At least one probe observation is required.")
-
-        current_score = next(
-            (score for cell, score in observations if cell == current_cell), None
-        )
-        best_cell, best_score = min(observations, key=lambda item: item[1].q)
-        if (
-            current_score is not None
-            and best_cell != current_cell
-            and best_score.q > current_score.q - self.switch_margin
-        ):
-            best_cell, best_score = current_cell, current_score
-
+        current_best: SensorCell,
+        probed_this_round: set[str],
+    ) -> tuple[Optional[SensorCell], float, float]:
         state = self._state_for(context)
-        state.best_cell_id = best_cell.cell_id
-        state.committed_cycles += 1
-        if self._bias(best_score) <= self.low_bias_threshold:
-            return PolicyDecision(
-                "use", "probe_found_low_camera_bias", best_cell, best_score
+        safe_cells = self.safety_policy.safe_cells(context)
+        if current_best not in safe_cells:
+            raise ValueError(
+                f"Current best {current_best.cell_id} is unsafe for "
+                f"{context.table_key}."
             )
-        return PolicyDecision("offload", "probe_exhausted", best_cell, best_score)
+
+        # After a scene change, validate the warm-start posterior best before
+        # considering any other acquisition.
+        if (
+            state.cells[current_best.cell_id].last_scene_epoch
+            != state.scene_epoch
+        ):
+            return current_best, 0.0, 0.0
+
+        best_mean, best_variance = self.belief(context, current_best)
+        selected_cell: Optional[SensorCell] = None
+        selected_probability = 0.0
+        selected_improvement = -1.0
+        for candidate in safe_cells:
+            if (
+                candidate == current_best
+                or candidate.cell_id in probed_this_round
+            ):
+                continue
+            candidate_mean, candidate_variance = self.belief(context, candidate)
+            candidate_probability = probability_of_improvement(
+                candidate_mean,
+                candidate_variance,
+                best_mean,
+                best_variance,
+                self.ei_practical_margin,
+            )
+            candidate_improvement = expected_improvement(
+                candidate_mean,
+                candidate_variance,
+                best_mean,
+                best_variance,
+                self.ei_practical_margin,
+            )
+            # safe_cells follows ALL_CELLS order, so strict comparison gives
+            # deterministic tie-breaking without a separate round-robin state.
+            if candidate_improvement > selected_improvement:
+                selected_cell = candidate
+                selected_probability = candidate_probability
+                selected_improvement = candidate_improvement
+
+        if selected_cell is None:
+            return None, 0.0, 0.0
+        return selected_cell, selected_probability, selected_improvement
+
+    def best_good_enough_probability(
+        self, context: ContextKey, best_cell: SensorCell
+    ) -> float:
+        best_mean, best_variance = self.belief(context, best_cell)
+        standard_deviation = math.sqrt(max(best_variance, 0.0))
+        difference = self.low_bias_threshold - best_mean
+        if standard_deviation <= NEAR_ZERO_STD:
+            if difference > 0.0:
+                return 1.0
+            if difference < 0.0:
+                return 0.0
+            return 0.5
+        return normal_cdf(difference / standard_deviation)
+
+    def best_is_confidently_separated(
+        self, context: ContextKey, best_cell: SensorCell
+    ) -> bool:
+        if not self.observed_in_current_scene(context, best_cell):
+            return False
+        best_mean, best_variance = self.belief(context, best_cell)
+        best_ucb = best_mean + self.confidence_z * math.sqrt(best_variance)
+        competitors = [
+            cell
+            for cell in self.safety_policy.safe_cells(context)
+            if cell != best_cell
+        ]
+        if not competitors:
+            return True
+        minimum_competitor_lcb = min(
+            self.belief(context, cell)[0]
+            - self.confidence_z * math.sqrt(self.belief(context, cell)[1])
+            for cell in competitors
+        )
+        return (
+            best_ucb + self.switch_margin
+            < minimum_competitor_lcb
+        )
+
+    def score_for_cell(self, context: ContextKey, cell: SensorCell) -> QScore:
+        state = self._state_for(context)
+        stats = state.cells[cell.cell_id]
+        belief_mean, belief_variance = self.belief(context, cell)
+        q_value = (
+            float(stats.last_q)
+            if stats.last_q is not None and math.isfinite(stats.last_q)
+            else belief_mean
+        )
+        return QScore(
+            q=q_value,
+            uncertainty=math.sqrt(belief_variance),
+            mu=belief_mean,
+        )
+
+    def complete_probe(
+        self,
+        context: ContextKey,
+        *,
+        action: Literal["use", "offload"],
+        reason: str,
+    ) -> PolicyDecision:
+        best_cell = self.posterior_best(context)
+        if action == "use" and not self.observed_in_current_scene(
+            context, best_cell
+        ):
+            raise RuntimeError(
+                "Cannot use a cell that has not been observed in the current scene."
+            )
+        state = self._state_for(context)
+        if self.observed_in_current_scene(context, best_cell):
+            state.best_cell_id = best_cell.cell_id
+        state.committed_cycles += 1
+        return PolicyDecision(
+            action,
+            reason,
+            best_cell,
+            self.score_for_cell(context, best_cell),
+        )
 
     def remember_used_cell(self, context: ContextKey, cell: SensorCell) -> None:
+        if not self.observed_in_current_scene(context, cell):
+            raise RuntimeError(
+                "Cannot remember a cell that was not observed in the current scene."
+            )
         state = self._state_for(context)
         state.best_cell_id = cell.cell_id
         state.committed_cycles += 1
