@@ -17,6 +17,7 @@ import torch.nn.functional as F
 from transformers import AutoImageProcessor
 
 from hardware.utils import (
+    ALL_CELLS,
     EXPOSURE_MS_VALUES,
     GAIN_VALUES,
     ContextKey,
@@ -77,6 +78,7 @@ CSV_FIELDNAMES = [
     "scene_change_z",
     "scene_change_detected",
     "probability_improvement",
+    "local_acceptance_probability",
     "expected_improvement",
     "probe_stop_reason",
     "frame_action",
@@ -490,6 +492,15 @@ class DebouncedContextProvider:
             )
         return self.committed
 
+    @property
+    def is_stable(self) -> bool:
+        return self.candidate is None
+
+    def transition_contexts(self) -> tuple[ContextKey, ...]:
+        if self.candidate is None:
+            return (self.committed,)
+        return (self.committed, self.candidate)
+
     def close(self) -> None:
         self.provider.close()
 
@@ -507,6 +518,7 @@ class ModelV1Experiment:
         camera_parameter_warn_ms: float,
         mde_inference_warn_ms: float,
         control_decision_warn_ms: float,
+        probe_decision_budget_ms: float,
         inference_poll_ms: float,
         evaluation_alignment: str,
         min_depth_m: float,
@@ -517,6 +529,7 @@ class ModelV1Experiment:
             camera_parameter_warn_ms,
             mde_inference_warn_ms,
             control_decision_warn_ms,
+            probe_decision_budget_ms,
             inference_poll_ms,
         ) <= 0.0:
             raise ValueError("Latency warning and polling intervals must be positive.")
@@ -530,6 +543,7 @@ class ModelV1Experiment:
         self.camera_parameter_warn_ms = camera_parameter_warn_ms
         self.mde_inference_warn_ms = mde_inference_warn_ms
         self.control_decision_warn_ms = control_decision_warn_ms
+        self.probe_decision_budget_ms = probe_decision_budget_ms
         self.inference_poll_sec = inference_poll_ms / 1000.0
         self.evaluation_alignment = evaluation_alignment
         self.min_depth_m = min_depth_m
@@ -619,6 +633,7 @@ class ModelV1Experiment:
             "scene_change_z": "",
             "scene_change_detected": 0,
             "probability_improvement": "",
+            "local_acceptance_probability": "",
             "expected_improvement": "",
             "probe_stop_reason": "",
             "frame_action": "",
@@ -696,45 +711,13 @@ class ModelV1Experiment:
             }
         )
 
-    def _drop_jobs(
-        self,
-        jobs: Sequence[tuple[dict[str, Any], Future[QScore]]],
-        old_context: ContextKey,
-        new_context: ContextKey,
-    ) -> None:
-        reason = f"context_changed:{old_context.table_key}->{new_context.table_key}"
-        decision_time_ns = time.time_ns()
-        for row, future in jobs:
-            future.cancel()
-            row["dropped"] = 1
-            row["frame_action"] = "drop"
-            row["round_action"] = "drop"
-            row["control_context"] = new_context.table_key
-            row["discard_reason"] = reason
-            delay_ms = max(
-                0.0, (decision_time_ns - int(row["timestamp_ns"])) / 1_000_000.0
-            )
-            row["control_decision_delay_ms"] = delay_ms
-            if delay_ms > self.control_decision_warn_ms:
-                self._add_delay(row, "control_decision")
-                print(
-                    f"[LATENCY WARNING] round={row['round_index']} "
-                    f"capture={row['capture_index']} "
-                    f"control_decision_delay_ms={delay_ms:.2f} (dropped)"
-                )
-        print(f"[DROP] {reason}; stale MDE results will be ignored.")
-
     def _await_jobs(
         self,
         jobs: Sequence[tuple[dict[str, Any], Future[QScore]]],
-        context: ContextKey,
-    ) -> bool:
+    ) -> None:
         pending = {future: row for row, future in jobs}
         while pending:
-            current_context = self.context_provider.get()
-            if current_context != context:
-                self._drop_jobs(jobs, context, current_context)
-                return False
+            self.context_provider.get()
             completed, _ = wait(
                 pending,
                 timeout=self.inference_poll_sec,
@@ -744,31 +727,16 @@ class ModelV1Experiment:
                 row = pending.pop(future)
                 self._store_score(row, future.result())
 
-        current_context = self.context_provider.get()
-        if current_context != context:
-            self._drop_jobs(jobs, context, current_context)
-            return False
-        return True
-
     def _await_probe_result(
         self,
         row: dict[str, Any],
         future: Future[QScore],
-        context: ContextKey,
-    ) -> Optional[ContextKey]:
-        stale_context: Optional[ContextKey] = None
+    ) -> None:
         while not future.done():
-            current_context = self.context_provider.get()
-            if current_context != context:
-                stale_context = current_context
+            self.context_provider.get()
             wait([future], timeout=self.inference_poll_sec)
 
         self._store_score(row, future.result())
-
-        current_context = self.context_provider.get()
-        if current_context != context:
-            stale_context = current_context
-        return stale_context
 
     def _finish_decision(
         self,
@@ -812,13 +780,77 @@ class ModelV1Experiment:
                     f"control_decision_delay_ms={delay_ms:.2f}"
                 )
 
-    def run_round(self) -> None:
+    def _context_state(
+        self,
+    ) -> tuple[ContextKey, bool, tuple[ContextKey, ...]]:
         context = self.context_provider.get()
+        stable = bool(getattr(self.context_provider, "is_stable", True))
+        transition_contexts = getattr(
+            self.context_provider,
+            "transition_contexts",
+            lambda: (context,),
+        )()
+        return context, stable, transition_contexts
+
+    def _defer_for_transition(
+        self,
+        capture_context: ContextKey,
+        rows: Sequence[dict[str, Any]],
+        decision: PolicyDecision,
+    ) -> bool:
+        current_context, stable, transition_contexts = self._context_state()
+        if stable and current_context == capture_context:
+            return False
+
+        if stable:
+            control_cell = self.policy.cell_for_context(
+                current_context, self.default_cell
+            )
+            control_context = current_context
+            reason = "stable_context_cached_best"
+        else:
+            control_cell = self.policy.bridge_cell(
+                transition_contexts, self.default_cell
+            )
+            control_context = transition_contexts[-1]
+            reason = "transition_bridge"
+
+        self._finish_decision(
+            rows,
+            decision,
+            stale_context=control_context,
+        )
+        if rows[-1]["cell_id"] != control_cell.cell_id:
+            self._apply_control_cell(control_cell, reason=reason)
+        print(
+            f"[Context control] capture={capture_context.table_key} "
+            f"control={control_context.table_key} cell={control_cell.cell_id} "
+            f"reason={reason}; capture belief retained."
+        )
+        return True
+
+    def _probe_fits_budget(self, initial_row: dict[str, Any]) -> bool:
+        elapsed_ms = max(
+            0.0,
+            (time.time_ns() - int(initial_row["timestamp_ns"])) / 1_000_000.0,
+        )
+        next_probe_ms = (
+            float(initial_row["camera_parameter_ms"])
+            + float(initial_row["mde_inference_ms"])
+        )
+        return elapsed_ms + next_probe_ms <= self.probe_decision_budget_ms
+
+    def run_round(self) -> None:
+        context, stable, transition_contexts = self._context_state()
         context.validate()
-        current_cell = self.policy.cell_for_context(context, self.default_cell)
+        current_cell = (
+            self.policy.cell_for_context(context, self.default_cell)
+            if stable
+            else self.policy.bridge_cell(transition_contexts, self.default_cell)
+        )
         print(
             f"\n[Round {self.round_index}] context={context.table_key} "
-            f"cell={current_cell.cell_id}"
+            f"cell={current_cell.cell_id} stable={stable}"
         )
 
         initial_row, initial_image, initial_depth = self._capture(
@@ -836,35 +868,17 @@ class ModelV1Experiment:
             ),
         )
         self._save_capture(initial_row, initial_image, initial_depth)
-        initial_job = (initial_row, initial_future)
-        if not self._await_jobs([initial_job], context):
-            self.round_index += 1
-            return
-        latest_context = self.context_provider.get()
-        if latest_context != context:
-            self._drop_jobs([initial_job], context, latest_context)
-            self.round_index += 1
-            return
+        self._await_jobs([(initial_row, initial_future)])
         initial_score = QScore(
             q=float(initial_row["q"]),
             uncertainty=float(initial_row["std"]),
             mu=float(initial_row["camera_bias"]),
         )
-        initial_decision = self.policy.decide(current_cell, initial_score)
         initial_update = self.policy.observe(
             context, current_cell, initial_score
         )
         self._store_belief_update(initial_row, initial_update)
-        if (
-            initial_decision.action != "probe"
-            and self.policy.minimum_initial_probes_remaining(context) > 0
-        ):
-            initial_decision = PolicyDecision(
-                "probe",
-                "minimum_initial_probes",
-                current_cell,
-                initial_score,
-            )
+        initial_decision = self.policy.decide(current_cell, initial_score)
         initial_row["frame_action"] = initial_decision.action
         print(
             f"[Decision] bias={initial_score.mu:.6f} std="
@@ -872,193 +886,134 @@ class ModelV1Experiment:
             f"action={initial_decision.action}"
         )
 
-        if initial_decision.action != "probe":
-            self._finish_decision([initial_row], initial_decision)
-            if initial_decision.action == "use":
-                self.policy.remember_used_cell(context, current_cell)
-            else:
-                self.policy.invoke_offload(context, initial_decision)
+        cached_decision = PolicyDecision(
+            "use",
+            "capture_context_result_cached",
+            current_cell,
+            initial_score,
+        )
+        if self._defer_for_transition(
+            context, [initial_row], cached_decision
+        ):
             self.round_index += 1
             return
 
-        round_rows = [initial_row]
-        probed_this_round: set[str] = set()
-        probe_count = 0
-        stale_context: Optional[ContextKey] = None
-        final_decision: Optional[PolicyDecision] = None
-
-        def finish_for_exhaustion(reason: str) -> PolicyDecision:
-            best_cell = self.policy.posterior_best(context)
-            good_enough = (
-                self.policy.minimum_initial_probes_remaining(context) == 0
-                and self.policy.observed_in_current_scene(context, best_cell)
-                and self.policy.best_good_enough_probability(context, best_cell)
-                >= self.policy.good_enough_probability
-            )
-            return self.policy.complete_probe(
+        acceptable = self.policy.acceptable_cell(context, [current_cell])
+        if acceptable is not None:
+            final_decision = self.policy.complete_probe(
                 context,
-                action="use" if good_enough else "offload",
+                action="use",
+                reason="local_candidate_acceptable",
+                selected_cell=acceptable,
+            )
+            self._finish_decision([initial_row], final_decision)
+            self.round_index += 1
+            return
+
+        challenger, local_probability = self.policy.select_local_challenger(
+            context, current_cell
+        )
+        if challenger is None or not self._probe_fits_budget(initial_row):
+            reason = (
+                "shortlist_exhausted"
+                if challenger is None
+                else "probe_decision_budget_exhausted"
+            )
+            final_decision = self.policy.complete_probe(
+                context,
+                action="offload",
                 reason=reason,
+                selected_cell=current_cell,
             )
+            self._finish_decision([initial_row], final_decision)
+            self.policy.invoke_offload(context, final_decision)
+            self.round_index += 1
+            return
 
-        while final_decision is None:
-            current_best = self.policy.posterior_best(context)
-            next_cell, probability_improvement, improvement = (
-                self.policy.select_next_probe_cell(
-                    context,
-                    current_best,
-                    probed_this_round,
-                )
-            )
-            if next_cell is None:
-                final_decision = finish_for_exhaustion(
-                    "no_remaining_probe_cell"
-                )
-                break
+        if self._defer_for_transition(
+            context, [initial_row], cached_decision
+        ):
+            self.round_index += 1
+            return
 
-            current_context = self.context_provider.get()
-            if current_context != context:
-                stale_context = current_context
-                final_decision = finish_for_exhaustion(
-                    "context_changed_during_probe"
-                )
-                break
+        print(
+            f"[Probe] context={context.table_key} "
+            f"challenger={challenger.cell_id} "
+            f"p_local={local_probability:.6f}"
+        )
+        probe_row, probe_image, probe_depth = self._capture(
+            challenger, context, "probe"
+        )
+        probe_row.update(
+            {
+                "probe_step": 1,
+                "local_acceptance_probability": local_probability,
+                "expected_improvement": "",
+            }
+        )
+        probe_future = self.executor.submit(
+            self.predictor.predict,
+            probe_image,
+            context=context,
+            exposure_us=float(probe_row["exposure_us_model"]),
+            gain=float(
+                probe_row["actual_gain"]
+                if probe_row["actual_gain"] not in (None, "")
+                else probe_row["gain"]
+            ),
+        )
+        self._save_capture(probe_row, probe_image, probe_depth)
+        self._await_probe_result(probe_row, probe_future)
 
-            probe_step = probe_count + 1
-            print(
-                f"[Probe step {probe_step}] context={context.table_key} "
-                f"cell={next_cell.cell_id} p_imp={probability_improvement:.6f} "
-                f"ei={improvement:.6f}"
+        probe_score = QScore(
+            q=float(probe_row["q"]),
+            uncertainty=float(probe_row["std"]),
+            mu=float(probe_row["camera_bias"]),
+        )
+        probe_update = self.policy.observe(
+            context, challenger, probe_score
+        )
+        self._store_belief_update(probe_row, probe_update)
+        probe_row["frame_action"] = "probe_candidate"
+        round_rows = [initial_row, probe_row]
+
+        probe_cached_decision = PolicyDecision(
+            "use",
+            "capture_context_result_cached",
+            challenger,
+            probe_score,
+        )
+        if self._defer_for_transition(
+            context, round_rows, probe_cached_decision
+        ):
+            self.round_index += 1
+            return
+
+        shortlist = [current_cell, challenger]
+        acceptable = self.policy.acceptable_cell(context, shortlist)
+        if acceptable is not None:
+            final_decision = self.policy.complete_probe(
+                context,
+                action="use",
+                reason="local_candidate_acceptable",
+                selected_cell=acceptable,
             )
-            probe_row, probe_image, probe_depth = self._capture(
-                next_cell, context, "probe"
-            )
-            probe_row.update(
-                {
-                    "probe_step": probe_step,
-                    "probability_improvement": probability_improvement,
-                    "expected_improvement": improvement,
-                }
-            )
-            probe_future = self.executor.submit(
-                self.predictor.predict,
-                probe_image,
-                context=context,
-                exposure_us=float(probe_row["exposure_us_model"]),
-                gain=float(
-                    probe_row["actual_gain"]
-                    if probe_row["actual_gain"] not in (None, "")
-                    else probe_row["gain"]
+        else:
+            selected = min(
+                shortlist,
+                key=lambda cell: (
+                    self.policy.belief(context, cell)[0],
+                    ALL_CELLS.index(cell),
                 ),
             )
-            self._save_capture(probe_row, probe_image, probe_depth)
-            result_stale_context = self._await_probe_result(
-                probe_row, probe_future, context
-            )
-            if result_stale_context is not None:
-                stale_context = result_stale_context
-
-            probe_score = QScore(
-                q=float(probe_row["q"]),
-                uncertainty=float(probe_row["std"]),
-                mu=float(probe_row["camera_bias"]),
-            )
-            belief_update = self.policy.observe(
-                context, next_cell, probe_score
-            )
-            self._store_belief_update(probe_row, belief_update)
-            probe_row["frame_action"] = "probe_candidate"
-            round_rows.append(probe_row)
-            probed_this_round.add(next_cell.cell_id)
-            probe_count += 1
-
-            if stale_context is not None:
-                final_decision = finish_for_exhaustion(
-                    "context_changed_during_probe"
-                )
-                break
-
-            current_best = self.policy.posterior_best(context)
-            best_observed = self.policy.observed_in_current_scene(
-                context, current_best
-            )
-            best_good_enough_probability = (
-                self.policy.best_good_enough_probability(context, current_best)
+            final_decision = self.policy.complete_probe(
+                context,
+                action="offload",
+                reason="stable_shortlist_failed",
+                selected_cell=selected,
             )
 
-            # A new context/scene must collect the configured number of
-            # additional distinct cell observations before any early stop.
-            if self.policy.minimum_initial_probes_remaining(context) > 0:
-                if probe_count >= self.policy.cells_per_probe:
-                    final_decision = finish_for_exhaustion(
-                        "maximum_probe_budget"
-                    )
-                    break
-                continue
-
-            # A. A current-scene observation is probably below the practical
-            # low-bias threshold.
-            if (
-                best_observed
-                and best_good_enough_probability
-                >= self.policy.good_enough_probability
-            ):
-                final_decision = self.policy.complete_probe(
-                    context,
-                    action="use",
-                    reason="good_enough_probability",
-                )
-                break
-
-            # B. The best cell's upper confidence bound is separated from all
-            # competitors' lower confidence bounds.
-            if self.policy.best_is_confidently_separated(
-                context, current_best
-            ):
-                final_decision = self.policy.complete_probe(
-                    context,
-                    action="use",
-                    reason="best_confidence_separation",
-                )
-                break
-
-            prospective_cell, _, maximum_improvement = (
-                self.policy.select_next_probe_cell(
-                    context,
-                    current_best,
-                    probed_this_round,
-                )
-            )
-            best_requires_validation = not best_observed
-
-            # C. Warm-start validation takes priority after a scene change.
-            # Otherwise stop when no remaining candidate can repay probe cost.
-            if prospective_cell is None:
-                final_decision = finish_for_exhaustion(
-                    "no_remaining_probe_cell"
-                )
-                break
-            if (
-                not best_requires_validation
-                and maximum_improvement < self.policy.ei_probe_cost
-            ):
-                final_decision = finish_for_exhaustion(
-                    "expected_improvement_below_probe_cost"
-                )
-                break
-
-            # D. --cells-per-probe is the maximum number of sequential
-            # single-frame probes in this round.
-            if probe_count >= self.policy.cells_per_probe:
-                final_decision = finish_for_exhaustion(
-                    "maximum_probe_budget"
-                )
-                break
-
-        assert final_decision is not None
-        self._finish_decision(
-            round_rows, final_decision, stale_context=stale_context
-        )
+        self._finish_decision(round_rows, final_decision)
         selected_mean, selected_variance = self.policy.belief(
             context, final_decision.selected_cell
         )
@@ -1069,20 +1024,10 @@ class ModelV1Experiment:
             f"action={final_decision.action} reason={final_decision.reason}"
         )
 
-        if stale_context is not None:
-            safe_cell = self.policy.cell_for_context(
-                stale_context, self.default_cell
+        if final_decision.selected_cell != challenger:
+            self._apply_control_cell(
+                final_decision.selected_cell, reason="probe_result"
             )
-            self._apply_control_cell(safe_cell, reason="probe_result_deferred")
-            print(
-                f"[Probe deferred] results retained for context={context.table_key}; "
-                f"stale selection skipped and camera moved to {safe_cell.cell_id} "
-                f"for current={stale_context.table_key}."
-            )
-            self.round_index += 1
-            return
-
-        self._apply_control_cell(final_decision.selected_cell, reason="probe_result")
         if final_decision.action == "offload":
             self.policy.invoke_offload(context, final_decision)
         self.round_index += 1
@@ -1305,6 +1250,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--camera-parameter-warn-ms", type=float, default=50.0)
     parser.add_argument("--mde-inference-warn-ms", type=float, default=100.0)
     parser.add_argument("--control-decision-warn-ms", type=float, default=500.0)
+    parser.add_argument("--probe-decision-budget-ms", type=float, default=500.0)
     parser.add_argument("--inference-poll-ms", type=float, default=10.0)
 
     parser.add_argument(
@@ -1393,6 +1339,7 @@ def main() -> int:
             camera_parameter_warn_ms=args.camera_parameter_warn_ms,
             mde_inference_warn_ms=args.mde_inference_warn_ms,
             control_decision_warn_ms=args.control_decision_warn_ms,
+            probe_decision_budget_ms=args.probe_decision_budget_ms,
             inference_poll_ms=args.inference_poll_ms,
             evaluation_alignment=args.evaluation_alignment,
             min_depth_m=args.min_depth_m,

@@ -192,6 +192,52 @@ class SequentialEIPolicyTest(unittest.TestCase):
                 reason="invalid_unobserved_use",
             )
 
+    def test_local_shortlist_uses_one_acceptable_challenger(self) -> None:
+        controller = self.controller()
+        current, challenger = ALL_CELLS[:2]
+        controller.observe(self.context, current, score(0.18, 0.01))
+        controller.observe(self.context, challenger, score(0.05, 0.01))
+
+        selected, probability = controller.select_local_challenger(
+            self.context, current
+        )
+        self.assertEqual(selected, challenger)
+        self.assertGreaterEqual(probability, controller.good_enough_probability)
+        self.assertEqual(
+            controller.acceptable_cell(
+                self.context, [current, challenger]
+            ),
+            challenger,
+        )
+
+    def test_bridge_cell_reuses_best_cell_shared_by_contexts(self) -> None:
+        controller = self.controller()
+        other_context = ContextKey(1, 0)
+        bridge = ALL_CELLS[3]
+        controller.observe(self.context, bridge, score(0.04, 0.01))
+        controller.observe(other_context, bridge, score(0.06, 0.01))
+
+        self.assertEqual(
+            controller.bridge_cell(
+                (self.context, other_context), ALL_CELLS[-1]
+            ),
+            bridge,
+        )
+
+    def test_late_observation_becomes_cached_context_cell(self) -> None:
+        controller = self.controller()
+        observed = ALL_CELLS[3]
+        controller.observe(self.context, observed, score(0.05, 0.01))
+        self.assertEqual(
+            controller.cell_for_context(self.context, ALL_CELLS[-1]),
+            observed,
+        )
+
+    def test_unacceptable_frame_probes_instead_of_direct_offload(self) -> None:
+        controller = self.controller()
+        decision = controller.decide(ALL_CELLS[0], score(0.18, 0.02))
+        self.assertEqual(decision.action, "probe")
+
 
 if __name__ == "__main__":
     unittest.main()

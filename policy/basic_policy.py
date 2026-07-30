@@ -365,13 +365,20 @@ class ATIMDECameraProbingController:
     def decide(self, cell: SensorCell, score: QScore) -> PolicyDecision:
         bias = self._bias(score)
         std = self._std(score)
-        if bias <= self.low_bias_threshold:
-            return PolicyDecision("use", "camera_bias_low", cell, score)
-        if bias >= self.high_bias_threshold and std <= self.probe_std_threshold:
-            return PolicyDecision(
-                "probe", "camera_bias_high_uncertainty_low", cell, score
+        if std <= NEAR_ZERO_STD:
+            difference = self.low_bias_threshold - bias
+            local_probability = (
+                1.0 if difference > 0.0 else 0.0 if difference < 0.0 else 0.5
             )
-        return PolicyDecision("offload", "camera_error_uncertain", cell, score)
+        else:
+            local_probability = normal_cdf(
+                (self.low_bias_threshold - bias) / std
+            )
+        if local_probability >= self.good_enough_probability:
+            return PolicyDecision(
+                "use", "local_probability_acceptable", cell, score
+            )
+        return PolicyDecision("probe", "local_probability_low", cell, score)
 
     def cell_for_context(
         self, context: ContextKey, fallback: SensorCell
@@ -380,9 +387,48 @@ class ATIMDECameraProbingController:
         state = self._state_for(context)
         if state.best_cell_id in {cell.cell_id for cell in safe_cells}:
             return CELL_BY_ID[state.best_cell_id]
+        observed = [
+            cell
+            for cell in safe_cells
+            if state.cells[cell.cell_id].count > 0
+        ]
+        if observed:
+            return min(
+                observed,
+                key=lambda cell: (
+                    self.belief(context, cell)[0],
+                    ALL_CELLS.index(cell),
+                ),
+            )
         if fallback in safe_cells:
             return fallback
         return safe_cells[0]
+
+    def bridge_cell(
+        self, contexts: tuple[ContextKey, ...], fallback: SensorCell
+    ) -> SensorCell:
+        contexts = tuple(dict.fromkeys(contexts))
+        if not contexts:
+            raise ValueError("At least one context is required for a bridge cell.")
+        common_cells = [
+            cell
+            for cell in ALL_CELLS
+            if all(
+                cell in self.safety_policy.safe_cells(context)
+                for context in contexts
+            )
+        ]
+        if not common_cells:
+            raise RuntimeError("No camera cell is safe across the transition.")
+        return min(
+            common_cells,
+            key=lambda cell: (
+                max(self.belief(context, cell)[0] for context in contexts),
+                sum(self.belief(context, cell)[0] for context in contexts),
+                cell != fallback,
+                ALL_CELLS.index(cell),
+            ),
+        )
 
     def belief(
         self, context: ContextKey, cell: SensorCell
@@ -498,6 +544,49 @@ class ATIMDECameraProbingController:
             return 0.5
         return normal_cdf(difference / standard_deviation)
 
+    def acceptable_cell(
+        self, context: ContextKey, cells: list[SensorCell]
+    ) -> Optional[SensorCell]:
+        acceptable = [
+            cell
+            for cell in cells
+            if self.observed_in_current_scene(context, cell)
+            and self.best_good_enough_probability(context, cell)
+            >= self.good_enough_probability
+        ]
+        if not acceptable:
+            return None
+        return min(
+            acceptable,
+            key=lambda cell: (
+                self.belief(context, cell)[0],
+                ALL_CELLS.index(cell),
+            ),
+        )
+
+    def select_local_challenger(
+        self, context: ContextKey, current_cell: SensorCell
+    ) -> tuple[Optional[SensorCell], float]:
+        candidates = [
+            cell
+            for cell in self.safety_policy.safe_cells(context)
+            if cell != current_cell
+        ]
+        if not candidates:
+            return None, 0.0
+        challenger = max(
+            candidates,
+            key=lambda cell: (
+                self.best_good_enough_probability(context, cell),
+                -self.belief(context, cell)[0],
+                -ALL_CELLS.index(cell),
+            ),
+        )
+        return (
+            challenger,
+            self.best_good_enough_probability(context, challenger),
+        )
+
     def best_is_confidently_separated(
         self, context: ContextKey, best_cell: SensorCell
     ) -> bool:
@@ -543,8 +632,9 @@ class ATIMDECameraProbingController:
         *,
         action: Literal["use", "offload"],
         reason: str,
+        selected_cell: Optional[SensorCell] = None,
     ) -> PolicyDecision:
-        best_cell = self.posterior_best(context)
+        best_cell = selected_cell or self.posterior_best(context)
         if action == "use" and not self.observed_in_current_scene(
             context, best_cell
         ):
