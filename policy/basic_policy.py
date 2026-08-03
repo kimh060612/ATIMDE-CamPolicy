@@ -21,8 +21,6 @@ from hardware.utils import (
     SensorCell,
 )
 
-SQRT_TWO = math.sqrt(2.0)
-PROBABILITY_EPSILON = 1e-12
 GRID_DIVERSE_CELL_IDS = (
     "E04_G016",
     "E04_G128",
@@ -44,10 +42,6 @@ GRID_DIVERSE_CELL_IDS = (
 GRID_DIVERSE_RANK = {
     cell_id: rank for rank, cell_id in enumerate(GRID_DIVERSE_CELL_IDS)
 }
-
-
-def normal_cdf(z: float) -> float:
-    return 0.5 * (1.0 + math.erf(z / SQRT_TWO))
 
 
 @dataclass
@@ -139,147 +133,101 @@ class PolicyDecision:
     score: QScore
 
 
-@dataclass(frozen=True)
-class ObservationUpdate:
-    probability_good: float
-    success_score_before: float
-    success_score_after: float
-
-
 class ATIMDECameraProbingController:
-    """Motion-light-conditioned controller that searches for a good-enough frame."""
+    """Context-specific active cell with one same-round pairwise-mu challenger."""
 
     def __init__(
         self,
         safety_policy: SafetyPolicy,
         *,
-        accept_threshold: float = 0.11,
-        accept_probability: float = 0.90,
-        required_bad_frames: int = 2,
-        success_ema_alpha: float = 0.3,
+        probe_trigger_threshold: float = 0.11,
+        switch_margin: float = 0.01,
+        mu_ema_alpha: float = 0.3,
         challenger_cooldown_rounds: int = 5,
         offload_command: Optional[str] = None,
     ) -> None:
-        if not math.isfinite(accept_threshold):
-            raise ValueError("accept_threshold must be finite.")
-        if not 0.0 < accept_probability <= 1.0:
-            raise ValueError("accept_probability must be in (0, 1].")
-        if required_bad_frames < 1:
-            raise ValueError("required_bad_frames must be positive.")
-        if not 0.0 < success_ema_alpha <= 1.0:
-            raise ValueError("success_ema_alpha must be in (0, 1].")
+        if not math.isfinite(probe_trigger_threshold):
+            raise ValueError("probe_trigger_threshold must be finite.")
+        if not math.isfinite(switch_margin) or switch_margin < 0.0:
+            raise ValueError("switch_margin must be finite and non-negative.")
+        if not 0.0 < mu_ema_alpha <= 1.0:
+            raise ValueError("mu_ema_alpha must be in (0, 1].")
         if challenger_cooldown_rounds < 0:
             raise ValueError("challenger_cooldown_rounds must be non-negative.")
 
         self.safety_policy = safety_policy
-        self.accept_threshold = accept_threshold
-        self.accept_probability = accept_probability
-        self.required_bad_frames = required_bad_frames
-        self.success_ema_alpha = success_ema_alpha
+        self.probe_trigger_threshold = probe_trigger_threshold
+        self.switch_margin = switch_margin
+        self.mu_ema_alpha = mu_ema_alpha
         self.challenger_cooldown_rounds = challenger_cooldown_rounds
         self.offload_command = offload_command
         self.context_states: dict[str, ContextState] = {}
 
     @staticmethod
-    def _bias(score: QScore) -> float:
-        if score.mu is None or not math.isfinite(score.mu):
-            raise ValueError("QScore.mu must contain the finite camera bias.")
-        return float(score.mu)
-
-    @staticmethod
-    def _std(score: QScore) -> float:
-        if score.uncertainty is None or not math.isfinite(score.uncertainty):
-            raise ValueError("QScore.uncertainty must contain the finite model std.")
-        standard_deviation = float(score.uncertainty)
-        if standard_deviation < 0.0:
-            raise ValueError("QScore.uncertainty must be non-negative.")
-        return standard_deviation
+    def _finite_mu(mu: float) -> float:
+        if not math.isfinite(mu):
+            raise ValueError("Observed mu must be finite.")
+        return float(mu)
 
     def _state_for(self, context: ContextKey) -> ContextState:
         context.validate()
         return self.context_states.setdefault(context.table_key, ContextState())
-
-    def probability_good(self, score: QScore) -> float:
-        return normal_cdf(
-            (self.accept_threshold - self._bias(score))
-            / max(self._std(score), PROBABILITY_EPSILON)
-        )
-
-    def is_acceptable(self, probability_good: float) -> bool:
-        return probability_good >= self.accept_probability
-
-    def observe(
-        self, context: ContextKey, cell: SensorCell, score: QScore
-    ) -> ObservationUpdate:
-        if cell not in self.safety_policy.safe_cells(context):
-            raise ValueError(
-                f"Cannot observe unsafe cell {cell.cell_id} for {context.table_key}."
-            )
-        probability_good = self.probability_good(score)
-        stats = self._state_for(context).cells[cell.cell_id]
-        before = stats.success_score
-        stats.update(probability_good, alpha=self.success_ema_alpha)
-        return ObservationUpdate(probability_good, before, stats.success_score)
-
-    def start_round(self, context: ContextKey) -> None:
-        for stats in self._state_for(context).cells.values():
-            stats.cooldown = max(stats.cooldown - 1, 0)
 
     def cell_for_context(
         self, context: ContextKey, fallback: SensorCell
     ) -> SensorCell:
         state = self._state_for(context)
         safe_cells = self.safety_policy.safe_cells(context)
-        safe_ids = {cell.cell_id for cell in safe_cells}
-        if state.active_cell_id in safe_ids:
-            return CELL_BY_ID[state.active_cell_id]
-        selected = fallback if fallback in safe_cells else safe_cells[0]
-        state.active_cell_id = selected.cell_id
-        return selected
-
-    def bridge_cell(
-        self, contexts: tuple[ContextKey, ...], fallback: SensorCell
-    ) -> SensorCell:
-        contexts = tuple(dict.fromkeys(contexts))
-        if not contexts:
-            raise ValueError("At least one context is required for a bridge cell.")
-        common_cells = [
-            cell
-            for cell in ALL_CELLS
-            if all(
-                cell in self.safety_policy.safe_cells(context)
-                for context in contexts
+        if state.active_cell_id is None:
+            selected = fallback if fallback in safe_cells else safe_cells[0]
+            state.active_cell_id = selected.cell_id
+            return selected
+        if state.active_cell_id not in {cell.cell_id for cell in safe_cells}:
+            raise RuntimeError(
+                f"Committed cell {state.active_cell_id} is unsafe for "
+                f"{context.table_key}."
             )
-        ]
-        if not common_cells:
-            raise RuntimeError("No camera cell is safe across the transition.")
+        return CELL_BY_ID[state.active_cell_id]
 
-        common_ids = {cell.cell_id for cell in common_cells}
-        preferred_ids = [
-            self._state_for(context).active_cell_id
-            for context in reversed(contexts)
-        ] + [fallback.cell_id]
-        for cell_id in preferred_ids:
-            if cell_id in common_ids:
-                return CELL_BY_ID[cell_id]
-        return min(
-            common_cells,
-            key=lambda cell: GRID_DIVERSE_RANK[cell.cell_id],
+    def committed_cell_for_context(
+        self, context: ContextKey, fallback: SensorCell
+    ) -> SensorCell:
+        safe_cells = self.safety_policy.safe_cells(context)
+        state = self.context_states.get(context.table_key)
+        if state is not None and state.active_cell_id in {
+            cell.cell_id for cell in safe_cells
+        }:
+            return CELL_BY_ID[state.active_cell_id]
+        return fallback if fallback in safe_cells else safe_cells[0]
+
+    def observe(
+        self,
+        context: ContextKey,
+        cell: SensorCell,
+        observed_mu: float,
+        *,
+        round_index: int,
+    ) -> None:
+        if cell not in self.safety_policy.safe_cells(context):
+            raise ValueError(
+                f"Cannot observe unsafe cell {cell.cell_id} for {context.table_key}."
+            )
+        self._state_for(context).cells[cell.cell_id].update(
+            self._finite_mu(observed_mu),
+            alpha=self.mu_ema_alpha,
+            round_index=round_index,
         )
 
     def record_current_result(
         self,
         context: ContextKey,
         current: SensorCell,
-        probability_good: float,
+        current_mu: float,
     ) -> bool:
         state = self._state_for(context)
-        state.active_cell_id = current.cell_id
-        if self.is_acceptable(probability_good):
-            state.consecutive_bad_frames = 0
-            return False
-        state.consecutive_bad_frames += 1
-        return state.consecutive_bad_frames >= self.required_bad_frames
+        if state.active_cell_id != current.cell_id:
+            raise RuntimeError("Current cell is not the committed context cell.")
+        return self._finite_mu(current_mu) > self.probe_trigger_threshold
 
     def select_challenger(
         self, context: ContextKey, current: SensorCell
@@ -292,10 +240,20 @@ class ATIMDECameraProbingController:
         ]
         if not candidates:
             return None
+        unobserved = [
+            cell
+            for cell in candidates
+            if state.cells[cell.cell_id].observation_count == 0
+        ]
+        if unobserved:
+            return min(
+                unobserved,
+                key=lambda cell: GRID_DIVERSE_RANK[cell.cell_id],
+            )
         return min(
             candidates,
             key=lambda cell: (
-                -state.cells[cell.cell_id].success_score,
+                state.cells[cell.cell_id].ema_mu,
                 GRID_DIVERSE_RANK[cell.cell_id],
             ),
         )
@@ -304,31 +262,39 @@ class ATIMDECameraProbingController:
         self,
         context: ContextKey,
         current: SensorCell,
+        current_mu: float,
         challenger: SensorCell,
-        challenger_probability_good: float,
+        challenger_mu: float,
     ) -> SensorCell:
         state = self._state_for(context)
-        if self.is_acceptable(challenger_probability_good):
+        if state.active_cell_id != current.cell_id:
+            raise RuntimeError("Current cell is not the committed context cell.")
+        current_mu = self._finite_mu(current_mu)
+        challenger_mu = self._finite_mu(challenger_mu)
+        if challenger_mu + self.switch_margin < current_mu:
             state.active_cell_id = challenger.cell_id
-            state.consecutive_bad_frames = 0
-            state.cells[challenger.cell_id].cooldown = 0
             return challenger
-        state.active_cell_id = current.cell_id
         state.cells[challenger.cell_id].cooldown = self.challenger_cooldown_rounds
         return current
 
-    def success_score(self, context: ContextKey, cell: SensorCell) -> float:
-        return self._state_for(context).cells[cell.cell_id].success_score
+    def complete_round(self, context: ContextKey) -> None:
+        for stats in self._state_for(context).cells.values():
+            stats.cooldown = max(stats.cooldown - 1, 0)
+
+    def active_cell_id(self, context: ContextKey) -> Optional[str]:
+        state = self.context_states.get(context.table_key)
+        return state.active_cell_id if state is not None else None
+
+    def ema_mu(self, context: ContextKey, cell: SensorCell) -> Optional[float]:
+        return self._state_for(context).cells[cell.cell_id].ema_mu
 
     def challenger_cooldown(self, context: ContextKey, cell: SensorCell) -> int:
         return self._state_for(context).cells[cell.cell_id].cooldown
 
-    def consecutive_bad_frames(self, context: ContextKey) -> int:
-        return self._state_for(context).consecutive_bad_frames
-
     def invoke_offload(self, context: ContextKey, decision: PolicyDecision) -> None:
         print(
-            f"[OFFLOAD] context={context.table_key} cell={decision.selected_cell.cell_id} "
+            f"[OFFLOAD] context={context.table_key} "
+            f"cell={decision.selected_cell.cell_id} "
             f"reason={decision.reason} q={decision.score.q:.6f}"
         )
         if not self.offload_command:
@@ -341,8 +307,8 @@ class ATIMDECameraProbingController:
                 "ATI_LIGHT_STATE": str(context.light_state),
                 "ATI_BEST_CELL": decision.selected_cell.cell_id,
                 "ATI_OFFLOAD_REASON": decision.reason,
-                "ATI_CAMERA_BIAS": str(self._bias(decision.score)),
-                "ATI_CAMERA_STD": str(self._std(decision.score)),
+                "ATI_CAMERA_BIAS": str(decision.score.mu),
+                "ATI_CAMERA_STD": str(decision.score.uncertainty),
                 "ATI_Q_VALUE": str(decision.score.q),
             }
         )

@@ -27,7 +27,6 @@ from model.model_camerror import MODEL_IDS, CameraInducedErrorModel
 from model.utils import CameraParameterRange, normalize_camera_parameters
 from policy.basic_policy import (
     ATIMDECameraProbingController,
-    ObservationUpdate,
     PolicyDecision,
     SafetyPolicy,
 )
@@ -71,14 +70,16 @@ CSV_FIELDNAMES = [
     "std",
     "q",
     "probe_step",
-    "probability_good",
-    "accept_threshold",
-    "accept_probability",
-    "cell_success_score_before",
-    "cell_success_score_after",
-    "consecutive_bad_frames",
-    "challenger_success_score",
-    "challenger_probability_good",
+    "latched_context",
+    "stable_at_round_start",
+    "transition_only",
+    "current_mu",
+    "challenger_mu",
+    "pairwise_mu_improvement",
+    "probe_trigger_threshold",
+    "switch_margin",
+    "active_cell_before",
+    "active_cell_after",
     "challenger_cooldown",
     "selection_source",
     "probe_stop_reason",
@@ -497,11 +498,6 @@ class DebouncedContextProvider:
     def is_stable(self) -> bool:
         return self.candidate is None
 
-    def transition_contexts(self) -> tuple[ContextKey, ...]:
-        if self.candidate is None:
-            return (self.committed,)
-        return (self.committed, self.candidate)
-
     def close(self) -> None:
         self.provider.close()
 
@@ -541,6 +537,7 @@ class ModelV1Experiment:
         self.policy = policy
         self.output_dir = output_dir
         self.default_cell = default_cell
+        self.last_applied_cell: SensorCell = default_cell
         self.camera_parameter_warn_ms = camera_parameter_warn_ms
         self.mde_inference_warn_ms = mde_inference_warn_ms
         self.control_decision_warn_ms = control_decision_warn_ms
@@ -568,6 +565,7 @@ class ModelV1Experiment:
     def _apply_control_cell(self, cell: SensorCell, *, reason: str) -> None:
         started = time.perf_counter()
         self.camera.apply_cell(cell)
+        self.last_applied_cell = cell
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         if elapsed_ms > self.camera_parameter_warn_ms:
             print(
@@ -580,10 +578,21 @@ class ModelV1Experiment:
         cell: SensorCell,
         context: ContextKey,
         role: str,
+        *,
+        apply_cell: bool = True,
     ) -> tuple[dict[str, Any], np.ndarray, np.ndarray]:
-        parameter_started = time.perf_counter()
-        requested_raw, actual_raw, actual_gain = self.camera.apply_cell(cell)
-        camera_parameter_ms = (time.perf_counter() - parameter_started) * 1000.0
+        if apply_cell:
+            parameter_started = time.perf_counter()
+            requested_raw, actual_raw, actual_gain = self.camera.apply_cell(cell)
+            camera_parameter_ms = (time.perf_counter() - parameter_started) * 1000.0
+            self.last_applied_cell = cell
+        else:
+            requested_raw = int(
+                round(cell.exposure_ms * self.camera.exposure_value_per_ms)
+            )
+            actual_raw = None
+            actual_gain = None
+            camera_parameter_ms = 0.0
         image_bgr, depth_gt_m = self.camera.capture_rgbd()
         capture_time_ns = time.time_ns()
 
@@ -628,14 +637,16 @@ class ModelV1Experiment:
             "std": "",
             "q": "",
             "probe_step": 0 if role == "initial" else "",
-            "probability_good": "",
-            "accept_threshold": self.policy.accept_threshold,
-            "accept_probability": self.policy.accept_probability,
-            "cell_success_score_before": "",
-            "cell_success_score_after": "",
-            "consecutive_bad_frames": "",
-            "challenger_success_score": "",
-            "challenger_probability_good": "",
+            "latched_context": context.table_key,
+            "stable_at_round_start": "",
+            "transition_only": 0,
+            "current_mu": "",
+            "challenger_mu": "",
+            "pairwise_mu_improvement": "",
+            "probe_trigger_threshold": self.policy.probe_trigger_threshold,
+            "switch_margin": self.policy.switch_margin,
+            "active_cell_before": "",
+            "active_cell_after": "",
             "challenger_cooldown": "",
             "selection_source": "",
             "probe_stop_reason": "",
@@ -696,18 +707,6 @@ class ModelV1Experiment:
                 f"capture={row['capture_index']} mde_inference_ms={inference_ms:.2f}"
             )
 
-    @staticmethod
-    def _store_observation_update(
-        row: dict[str, Any], update: ObservationUpdate
-    ) -> None:
-        row.update(
-            {
-                "probability_good": update.probability_good,
-                "cell_success_score_before": update.success_score_before,
-                "cell_success_score_after": update.success_score_after,
-            }
-        )
-
     def _await_probe_result(
         self,
         row: dict[str, Any],
@@ -763,52 +762,47 @@ class ModelV1Experiment:
 
     def _context_state(
         self,
-    ) -> tuple[ContextKey, bool, tuple[ContextKey, ...]]:
+    ) -> tuple[ContextKey, bool]:
         context = self.context_provider.get()
         stable = bool(getattr(self.context_provider, "is_stable", True))
-        transition_contexts = getattr(
-            self.context_provider,
-            "transition_contexts",
-            lambda: (context,),
-        )()
-        return context, stable, transition_contexts
+        return context, stable
 
-    def _defer_for_transition(
+    def _discard_if_stale(
         self,
-        capture_context: ContextKey,
+        latched_context: ContextKey,
         rows: Sequence[dict[str, Any]],
         decision: PolicyDecision,
+        restore_cell: SensorCell,
     ) -> bool:
-        current_context, stable, transition_contexts = self._context_state()
-        if stable and current_context == capture_context:
+        current_context, stable = self._context_state()
+        if stable and current_context == latched_context:
             return False
 
         if stable:
-            control_cell = self.policy.cell_for_context(
+            control_cell = self.policy.committed_cell_for_context(
                 current_context, self.default_cell
             )
             control_context = current_context
-            reason = "stable_context_active_cell"
         else:
-            control_cell = self.policy.bridge_cell(
-                transition_contexts, self.default_cell
-            )
-            control_context = transition_contexts[-1]
-            reason = "transition_bridge"
+            control_cell = restore_cell
+            control_context = current_context
 
         for row in rows:
-            row["selection_source"] = "context_bridge"
+            row["selection_source"] = "stale_pair_discarded"
+            row["active_cell_after"] = self.policy.active_cell_id(latched_context) or ""
         self._finish_decision(
             rows,
             decision,
             stale_context=control_context,
         )
-        if rows[-1]["cell_id"] != control_cell.cell_id:
-            self._apply_control_cell(control_cell, reason=reason)
+        for row in rows:
+            row["selected"] = 0
+        if self.last_applied_cell != control_cell:
+            self._apply_control_cell(control_cell, reason="stale_pair_discarded")
         print(
-            f"[Context control] capture={capture_context.table_key} "
+            f"[Context control] capture={latched_context.table_key} "
             f"control={control_context.table_key} cell={control_cell.cell_id} "
-            f"reason={reason}; context success statistics retained."
+            "reason=stale_pair_discarded"
         )
         return True
 
@@ -824,26 +818,36 @@ class ModelV1Experiment:
         return elapsed_ms + next_probe_ms <= self.probe_decision_budget_ms
 
     def run_round(self) -> None:
-        context, stable, transition_contexts = self._context_state()
-        context.validate()
-        self.policy.start_round(context)
+        latched_context, stable_at_round_start = self._context_state()
+        latched_context.validate()
         current_cell = (
-            self.policy.cell_for_context(context, self.default_cell)
-            if stable
-            else self.policy.bridge_cell(transition_contexts, self.default_cell)
+            self.policy.cell_for_context(latched_context, self.default_cell)
+            if stable_at_round_start
+            else self.last_applied_cell
         )
+        active_cell_before = self.policy.active_cell_id(latched_context) or ""
         print(
-            f"\n[Round {self.round_index}] context={context.table_key} "
-            f"cell={current_cell.cell_id} stable={stable}"
+            f"\n[Round {self.round_index}] context={latched_context.table_key} "
+            f"cell={current_cell.cell_id} stable={stable_at_round_start}"
         )
 
         initial_row, initial_image, initial_depth = self._capture(
-            current_cell, context, "initial"
+            current_cell,
+            latched_context,
+            "initial",
+            apply_cell=stable_at_round_start,
+        )
+        initial_row.update(
+            {
+                "stable_at_round_start": int(stable_at_round_start),
+                "transition_only": int(not stable_at_round_start),
+                "active_cell_before": active_cell_before,
+            }
         )
         initial_future = self.executor.submit(
             self.predictor.predict,
             initial_image,
-            context=context,
+            context=latched_context,
             exposure_us=float(initial_row["exposure_us_model"]),
             gain=float(
                 initial_row["actual_gain"]
@@ -858,20 +862,28 @@ class ModelV1Experiment:
             uncertainty=float(initial_row["std"]),
             mu=float(initial_row["camera_bias"]),
         )
-        initial_update = self.policy.observe(
-            context, current_cell, initial_score
-        )
-        self._store_observation_update(initial_row, initial_update)
-        current_acceptable = self.policy.is_acceptable(
-            initial_update.probability_good
-        )
-        initial_row["frame_action"] = "use" if current_acceptable else "probe"
+        current_mu = float(initial_score.mu)
+        initial_row["current_mu"] = current_mu
         print(
             f"[Decision] bias={initial_score.mu:.6f} std="
-            f"{initial_score.uncertainty:.6f} q={initial_score.q:.6f} "
-            f"p_good={initial_update.probability_good:.6f} "
-            f"acceptable={current_acceptable}"
+            f"{initial_score.uncertainty:.6f} q={initial_score.q:.6f}"
         )
+
+        if not stable_at_round_start:
+            initial_row.update(
+                {
+                    "frame_action": "transition_only",
+                    "selection_source": "transition_hold",
+                    "active_cell_after": active_cell_before,
+                }
+            )
+            transition_decision = PolicyDecision(
+                "use", "transition_hold", current_cell, initial_score
+            )
+            self._finish_decision([initial_row], transition_decision)
+            initial_row["selected"] = 0
+            self.round_index += 1
+            return
 
         cached_decision = PolicyDecision(
             "use",
@@ -879,77 +891,96 @@ class ModelV1Experiment:
             current_cell,
             initial_score,
         )
-        if self._defer_for_transition(
-            context, [initial_row], cached_decision
+        if self._discard_if_stale(
+            latched_context,
+            [initial_row],
+            cached_decision,
+            current_cell,
         ):
             self.round_index += 1
             return
 
         should_probe = self.policy.record_current_result(
-            context, current_cell, initial_update.probability_good
+            latched_context, current_cell, current_mu
         )
-        initial_row["consecutive_bad_frames"] = (
-            self.policy.consecutive_bad_frames(context)
-        )
-        if current_acceptable:
-            initial_row["selection_source"] = "current_acceptable"
-            final_decision = PolicyDecision(
-                "use", "current_acceptable", current_cell, initial_score
-            )
-            self._finish_decision([initial_row], final_decision)
-            self.round_index += 1
-            return
-
+        initial_row["frame_action"] = "probe" if should_probe else "use"
         if not should_probe:
-            initial_row["selection_source"] = "bad_frame_hysteresis"
+            self.policy.observe(
+                latched_context,
+                current_cell,
+                current_mu,
+                round_index=self.round_index,
+            )
+            self.policy.complete_round(latched_context)
+            initial_row.update(
+                {
+                    "selection_source": "current_below_trigger",
+                    "active_cell_after": active_cell_before,
+                }
+            )
             final_decision = PolicyDecision(
-                "use", "bad_frame_hysteresis", current_cell, initial_score
+                "use", "current_below_trigger", current_cell, initial_score
             )
             self._finish_decision([initial_row], final_decision)
             self.round_index += 1
             return
 
-        challenger = self.policy.select_challenger(context, current_cell)
+        challenger = self.policy.select_challenger(latched_context, current_cell)
         if challenger is None or not self._probe_fits_budget(initial_row):
             reason = (
                 "no_available_challenger"
                 if challenger is None
                 else "probe_decision_budget_exhausted"
             )
-            initial_row["selection_source"] = "bad_frame_hysteresis"
+            self.policy.observe(
+                latched_context,
+                current_cell,
+                current_mu,
+                round_index=self.round_index,
+            )
+            self.policy.complete_round(latched_context)
+            initial_row.update(
+                {
+                    "selection_source": "no_available_challenger",
+                    "active_cell_after": active_cell_before,
+                }
+            )
             final_decision = PolicyDecision(
                 "offload", reason, current_cell, initial_score
             )
             self._finish_decision([initial_row], final_decision)
-            self.policy.invoke_offload(context, final_decision)
+            self.policy.invoke_offload(latched_context, final_decision)
             self.round_index += 1
             return
 
-        if self._defer_for_transition(
-            context, [initial_row], cached_decision
+        if self._discard_if_stale(
+            latched_context,
+            [initial_row],
+            cached_decision,
+            current_cell,
         ):
             self.round_index += 1
             return
 
-        challenger_success_score = self.policy.success_score(context, challenger)
         print(
-            f"[Probe] context={context.table_key} "
-            f"challenger={challenger.cell_id} "
-            f"success_score={challenger_success_score:.6f}"
+            f"[Probe] context={latched_context.table_key} "
+            f"challenger={challenger.cell_id}"
         )
         probe_row, probe_image, probe_depth = self._capture(
-            challenger, context, "probe"
+            challenger, latched_context, "probe"
         )
         probe_row.update(
             {
                 "probe_step": 1,
-                "challenger_success_score": challenger_success_score,
+                "stable_at_round_start": 1,
+                "current_mu": current_mu,
+                "active_cell_before": active_cell_before,
             }
         )
         probe_future = self.executor.submit(
             self.predictor.predict,
             probe_image,
-            context=context,
+            context=latched_context,
             exposure_us=float(probe_row["exposure_us_model"]),
             gain=float(
                 probe_row["actual_gain"]
@@ -965,10 +996,8 @@ class ModelV1Experiment:
             uncertainty=float(probe_row["std"]),
             mu=float(probe_row["camera_bias"]),
         )
-        probe_update = self.policy.observe(
-            context, challenger, probe_score
-        )
-        self._store_observation_update(probe_row, probe_update)
+        challenger_mu = float(probe_score.mu)
+        probe_row["challenger_mu"] = challenger_mu
         probe_row["frame_action"] = "probe_candidate"
         round_rows = [initial_row, probe_row]
 
@@ -978,39 +1007,58 @@ class ModelV1Experiment:
             challenger,
             probe_score,
         )
-        if self._defer_for_transition(
-            context, round_rows, probe_cached_decision
+        if self._discard_if_stale(
+            latched_context,
+            round_rows,
+            probe_cached_decision,
+            current_cell,
         ):
             self.round_index += 1
             return
 
-        selected = self.policy.resolve_challenger(
-            context,
+        self.policy.observe(
+            latched_context,
             current_cell,
-            challenger,
-            probe_update.probability_good,
+            current_mu,
+            round_index=self.round_index,
         )
-        challenger_acceptable = selected == challenger
+        self.policy.observe(
+            latched_context,
+            challenger,
+            challenger_mu,
+            round_index=self.round_index,
+        )
+        self.policy.complete_round(latched_context)
+        selected = self.policy.resolve_challenger(
+            latched_context,
+            current_cell,
+            current_mu,
+            challenger,
+            challenger_mu,
+        )
+        challenger_won = selected == challenger
         selection_source = (
-            "challenger_acceptable"
-            if challenger_acceptable
-            else "challenger_rejected"
+            "pairwise_challenger_won"
+            if challenger_won
+            else "pairwise_current_kept"
         )
         final_decision = PolicyDecision(
-            "use" if challenger_acceptable else "offload",
+            "use" if challenger_won else "offload",
             selection_source,
             selected,
-            probe_score if challenger_acceptable else initial_score,
+            probe_score if challenger_won else initial_score,
         )
-        challenger_cooldown = self.policy.challenger_cooldown(context, challenger)
-        consecutive_bad_frames = self.policy.consecutive_bad_frames(context)
+        active_cell_after = self.policy.active_cell_id(latched_context) or ""
+        challenger_cooldown = self.policy.challenger_cooldown(
+            latched_context, challenger
+        )
         for row in round_rows:
             row.update(
                 {
                     "selection_source": selection_source,
-                    "consecutive_bad_frames": consecutive_bad_frames,
-                    "challenger_success_score": challenger_success_score,
-                    "challenger_probability_good": probe_update.probability_good,
+                    "challenger_mu": challenger_mu,
+                    "pairwise_mu_improvement": current_mu - challenger_mu,
+                    "active_cell_after": active_cell_after,
                     "challenger_cooldown": challenger_cooldown,
                 }
             )
@@ -1018,16 +1066,16 @@ class ModelV1Experiment:
         self._finish_decision(round_rows, final_decision)
         print(
             f"[Probe result] selected={final_decision.selected_cell.cell_id} "
-            f"p_good={probe_update.probability_good:.6f} "
+            f"current_mu={current_mu:.6f} challenger_mu={challenger_mu:.6f} "
             f"action={final_decision.action} reason={final_decision.reason}"
         )
 
-        if not challenger_acceptable:
+        if not challenger_won:
             self._apply_control_cell(
-                current_cell, reason="challenger_rejected"
+                current_cell, reason="pairwise_current_kept"
             )
         if final_decision.action == "offload":
-            self.policy.invoke_offload(context, final_decision)
+            self.policy.invoke_offload(latched_context, final_decision)
         self.round_index += 1
 
     def stop_inference(self) -> None:
@@ -1164,10 +1212,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--local-files-only", action="store_true")
     parser.add_argument("--q-uncertainty-weight", type=float, default=1.0)
 
-    parser.add_argument("--accept-threshold", type=float, default=0.11)
-    parser.add_argument("--accept-probability", type=float, default=0.90)
-    parser.add_argument("--required-bad-frames", type=int, default=2)
-    parser.add_argument("--success-ema-alpha", type=float, default=0.3)
+    parser.add_argument("--probe-trigger-threshold", type=float, default=0.11)
+    parser.add_argument("--switch-margin", type=float, default=0.01)
+    parser.add_argument("--mu-ema-alpha", type=float, default=0.3)
     parser.add_argument("--challenger-cooldown-rounds", type=int, default=5)
     parser.add_argument("--offload-command", type=str, default=None)
     parser.add_argument("--safety-config", type=Path, default=None)
@@ -1271,10 +1318,9 @@ def main() -> int:
         safety_policy = SafetyPolicy.from_json(args.safety_config)
         policy = ATIMDECameraProbingController(
             safety_policy,
-            accept_threshold=args.accept_threshold,
-            accept_probability=args.accept_probability,
-            required_bad_frames=args.required_bad_frames,
-            success_ema_alpha=args.success_ema_alpha,
+            probe_trigger_threshold=args.probe_trigger_threshold,
+            switch_margin=args.switch_margin,
+            mu_ema_alpha=args.mu_ema_alpha,
             challenger_cooldown_rounds=args.challenger_cooldown_rounds,
             offload_command=args.offload_command,
         )

@@ -53,11 +53,10 @@ class QScore:
     Parameters
     ----------
     q:
-        Logged analysis score, typically `mu + beta * sigma`. The satisficing
+        Logged analysis score, typically `mu + beta * sigma`. The pairwise
         controller does not use it for cell switching.
     uncertainty:
-        Optional predictive uncertainty. When present, it can trigger an
-        offload decision through `--offload-uncertainty-threshold`.
+        Optional predictive uncertainty retained for analysis.
     mu:
         Optional predicted mean, logged for later analysis.
     extra:
@@ -69,25 +68,27 @@ class QScore:
     mu: Optional[float] = None
     extra: dict[str, float] = field(default_factory=dict)
 
+
 @dataclass
 class CellStats:
-    success_score: float = 0.5
+    ema_mu: Optional[float] = None
     observation_count: int = 0
-    last_probability_good: Optional[float] = None
     cooldown: int = 0
+    last_seen_round: int = -1
 
-    def update(self, probability_good: float, *, alpha: float) -> None:
-        self.success_score = (
-            (1.0 - alpha) * self.success_score + alpha * probability_good
+    def update(self, observed_mu: float, *, alpha: float, round_index: int) -> None:
+        self.ema_mu = (
+            observed_mu
+            if self.ema_mu is None
+            else (1.0 - alpha) * self.ema_mu + alpha * observed_mu
         )
         self.observation_count += 1
-        self.last_probability_good = probability_good
+        self.last_seen_round = round_index
 
 
 @dataclass
 class ContextState:
     active_cell_id: Optional[str] = None
-    consecutive_bad_frames: int = 0
     cells: dict[str, CellStats] = field(
         default_factory=lambda: {
             cell.cell_id: CellStats() for cell in ALL_CELLS
