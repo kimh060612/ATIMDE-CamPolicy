@@ -114,6 +114,8 @@ class CellStats:
         observation_variance: Optional[float] = None,
         variance_floor: Optional[float] = None,
         scene_epoch: Optional[int] = None,
+        process_variance: Optional[float] = None,
+        maximum_belief_variance: Optional[float] = None,
     ) -> None:
         if not math.isfinite(score.q):
             raise ValueError(f"Non-finite q score: {score.q}")
@@ -141,17 +143,35 @@ class CellStats:
         assert observation_variance is not None
         assert variance_floor is not None
         assert scene_epoch is not None
+        process_variance = 0.0 if process_variance is None else process_variance
+        maximum_belief_variance = (
+            math.inf
+            if maximum_belief_variance is None
+            else maximum_belief_variance
+        )
         if not math.isfinite(observation_variance) or observation_variance <= 0.0:
             raise ValueError("observation_variance must be finite and positive.")
         if not math.isfinite(variance_floor) or variance_floor <= 0.0:
             raise ValueError("variance_floor must be finite and positive.")
+        if not math.isfinite(process_variance) or process_variance < 0.0:
+            raise ValueError("process_variance must be finite and non-negative.")
+        if (
+            math.isnan(maximum_belief_variance)
+            or maximum_belief_variance < variance_floor
+        ):
+            raise ValueError(
+                "maximum_belief_variance must be at least variance_floor."
+            )
 
         observation_variance = max(observation_variance, variance_floor)
         if self.belief_mean is None or self.belief_variance is None:
             self.belief_mean = float(score.mu)
             self.belief_variance = observation_variance
         else:
-            prior_variance = max(self.belief_variance, variance_floor)
+            prior_variance = min(
+                max(self.belief_variance, variance_floor) + process_variance,
+                maximum_belief_variance,
+            )
             fused_variance = max(
                 1.0
                 / (
@@ -181,6 +201,10 @@ class ContextState:
     committed_cycles: int = 0
     scene_epoch: int = 0
     scene_change_streak: int = 0
+    candidate_cooldown: dict[str, int] = field(default_factory=dict)
+    tentative_cell_id: Optional[str] = None
+    previous_cell_id: Optional[str] = None
+    previous_reference_q: Optional[float] = None
 
 
 @dataclass(frozen=True)

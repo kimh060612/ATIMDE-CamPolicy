@@ -24,6 +24,29 @@ from hardware.utils import (
 SQRT_TWO = math.sqrt(2.0)
 SQRT_TWO_PI = math.sqrt(2.0 * math.pi)
 NEAR_ZERO_STD = 1e-12
+EI_TIE_REL_TOLERANCE = 1e-9
+EI_TIE_ABS_TOLERANCE = 1e-12
+GRID_DIVERSE_CELL_IDS = (
+    "E04_G016",
+    "E04_G128",
+    "E32_G016",
+    "E32_G128",
+    "E08_G032",
+    "E08_G064",
+    "E16_G032",
+    "E16_G064",
+    "E04_G032",
+    "E04_G064",
+    "E32_G032",
+    "E32_G064",
+    "E08_G016",
+    "E08_G128",
+    "E16_G016",
+    "E16_G128",
+)
+GRID_DIVERSE_RANK = {
+    cell_id: rank for rank, cell_id in enumerate(GRID_DIVERSE_CELL_IDS)
+}
 
 
 def normal_cdf(z: float) -> float:
@@ -200,6 +223,11 @@ class ATIMDECameraProbingController:
         unobserved_prior_mean: Optional[float] = None,
         unobserved_prior_variance: float = 0.04,
         belief_variance_floor: float = 1e-6,
+        belief_process_variance: float = 1e-4,
+        maximum_belief_variance: float = 0.04,
+        challenger_cooldown_rounds: int = 3,
+        switch_confirmation_margin: float = 0.01,
+        belief_age_variance_per_cycle: float = 1e-4,
         offload_command: Optional[str] = None,
     ) -> None:
         if cells_per_probe < 1:
@@ -240,6 +268,20 @@ class ATIMDECameraProbingController:
             raise ValueError("unobserved_prior_variance must be positive.")
         if belief_variance_floor <= 0.0:
             raise ValueError("belief_variance_floor must be positive.")
+        if belief_process_variance < 0.0:
+            raise ValueError("belief_process_variance must be non-negative.")
+        if maximum_belief_variance < belief_variance_floor:
+            raise ValueError(
+                "maximum_belief_variance must be at least belief_variance_floor."
+            )
+        if challenger_cooldown_rounds < 0:
+            raise ValueError("challenger_cooldown_rounds must be non-negative.")
+        if switch_confirmation_margin < 0.0:
+            raise ValueError("switch_confirmation_margin must be non-negative.")
+        if belief_age_variance_per_cycle < 0.0:
+            raise ValueError(
+                "belief_age_variance_per_cycle must be non-negative."
+            )
         if not all(
             math.isfinite(value)
             for value in (
@@ -252,6 +294,10 @@ class ATIMDECameraProbingController:
                 scene_reset_variance,
                 unobserved_prior_variance,
                 belief_variance_floor,
+                belief_process_variance,
+                maximum_belief_variance,
+                switch_confirmation_margin,
+                belief_age_variance_per_cycle,
             )
         ):
             raise ValueError("Sequential probing parameters must be finite.")
@@ -275,6 +321,11 @@ class ATIMDECameraProbingController:
         self.unobserved_prior_mean = float(unobserved_prior_mean)
         self.unobserved_prior_variance = unobserved_prior_variance
         self.belief_variance_floor = belief_variance_floor
+        self.belief_process_variance = belief_process_variance
+        self.maximum_belief_variance = maximum_belief_variance
+        self.challenger_cooldown_rounds = challenger_cooldown_rounds
+        self.switch_confirmation_margin = switch_confirmation_margin
+        self.belief_age_variance_per_cycle = belief_age_variance_per_cycle
         self.offload_command = offload_command
         self.context_states: dict[str, ContextState] = {}
 
@@ -343,6 +394,10 @@ class ATIMDECameraProbingController:
                             * self.scene_variance_inflation,
                             self.scene_reset_variance,
                         )
+                        safe_stats.belief_variance = min(
+                            safe_stats.belief_variance,
+                            self.maximum_belief_variance,
+                        )
 
         stats.update(
             score,
@@ -351,6 +406,8 @@ class ATIMDECameraProbingController:
             observation_variance=observation_variance,
             variance_floor=self.belief_variance_floor,
             scene_epoch=state.scene_epoch,
+            process_variance=self.belief_process_variance,
+            maximum_belief_variance=self.maximum_belief_variance,
         )
         assert stats.belief_mean is not None
         assert stats.belief_variance is not None
@@ -437,7 +494,13 @@ class ATIMDECameraProbingController:
         stats = state.cells[cell.cell_id]
         if stats.belief_mean is None or stats.belief_variance is None:
             return self.unobserved_prior_mean, self.unobserved_prior_variance
-        return stats.belief_mean, stats.belief_variance
+        age_cycles = max(state.committed_cycles - stats.last_seen_cycle, 0)
+        aged_variance = min(
+            stats.belief_variance
+            + self.belief_age_variance_per_cycle * age_cycles,
+            self.maximum_belief_variance,
+        )
+        return stats.belief_mean, aged_variance
 
     def posterior_best(self, context: ContextKey) -> SensorCell:
         safe_cells = self.safety_policy.safe_cells(context)
@@ -498,10 +561,14 @@ class ATIMDECameraProbingController:
         selected_cell: Optional[SensorCell] = None
         selected_probability = 0.0
         selected_improvement = -1.0
-        for candidate in safe_cells:
+        for candidate in sorted(
+            safe_cells,
+            key=lambda cell: GRID_DIVERSE_RANK[cell.cell_id],
+        ):
             if (
                 candidate == current_best
                 or candidate.cell_id in probed_this_round
+                or state.candidate_cooldown.get(candidate.cell_id, 0) > 0
             ):
                 continue
             candidate_mean, candidate_variance = self.belief(context, candidate)
@@ -519,9 +586,15 @@ class ATIMDECameraProbingController:
                 best_variance,
                 self.ei_practical_margin,
             )
-            # safe_cells follows ALL_CELLS order, so strict comparison gives
-            # deterministic tie-breaking without a separate round-robin state.
-            if candidate_improvement > selected_improvement:
+            if selected_cell is None or (
+                candidate_improvement > selected_improvement
+                and not math.isclose(
+                    candidate_improvement,
+                    selected_improvement,
+                    rel_tol=EI_TIE_REL_TOLERANCE,
+                    abs_tol=EI_TIE_ABS_TOLERANCE,
+                )
+            ):
                 selected_cell = candidate
                 selected_probability = candidate_probability
                 selected_improvement = candidate_improvement
@@ -529,6 +602,72 @@ class ATIMDECameraProbingController:
         if selected_cell is None:
             return None, 0.0, 0.0
         return selected_cell, selected_probability, selected_improvement
+
+    def start_round(self, context: ContextKey) -> None:
+        state = self._state_for(context)
+        for cell_id, rounds in tuple(state.candidate_cooldown.items()):
+            remaining = max(rounds - 1, 0)
+            if remaining:
+                state.candidate_cooldown[cell_id] = remaining
+            else:
+                state.candidate_cooldown.pop(cell_id, None)
+
+    def candidate_cooldown(self, context: ContextKey, cell: SensorCell) -> int:
+        return self._state_for(context).candidate_cooldown.get(cell.cell_id, 0)
+
+    def select_raw_cell(
+        self,
+        context: ContextKey,
+        current: SensorCell,
+        current_score: QScore,
+        challenger: SensorCell,
+        challenger_score: QScore,
+    ) -> SensorCell:
+        state = self._state_for(context)
+        if challenger_score.q + self.switch_margin < current_score.q:
+            state.best_cell_id = challenger.cell_id
+            state.tentative_cell_id = challenger.cell_id
+            state.previous_cell_id = current.cell_id
+            state.previous_reference_q = current_score.q
+            return challenger
+
+        if self.challenger_cooldown_rounds:
+            state.candidate_cooldown[challenger.cell_id] = (
+                self.challenger_cooldown_rounds
+            )
+        return current
+
+    def resolve_tentative_switch(
+        self,
+        context: ContextKey,
+        current: SensorCell,
+        current_score: QScore,
+    ) -> tuple[Literal["none", "confirmed", "rolled_back"], SensorCell]:
+        state = self._state_for(context)
+        if state.tentative_cell_id != current.cell_id:
+            return "none", current
+
+        previous_cell_id = state.previous_cell_id
+        previous_reference_q = state.previous_reference_q
+        if previous_cell_id is None or previous_reference_q is None:
+            raise RuntimeError("Tentative switch is missing its rollback reference.")
+
+        if current_score.q <= previous_reference_q + self.switch_confirmation_margin:
+            result: Literal["confirmed", "rolled_back"] = "confirmed"
+            selected = current
+        else:
+            result = "rolled_back"
+            selected = CELL_BY_ID[previous_cell_id]
+            state.best_cell_id = previous_cell_id
+            if self.challenger_cooldown_rounds:
+                state.candidate_cooldown[current.cell_id] = (
+                    self.challenger_cooldown_rounds
+                )
+
+        state.tentative_cell_id = None
+        state.previous_cell_id = None
+        state.previous_reference_q = None
+        return result, selected
 
     def best_good_enough_probability(
         self, context: ContextKey, best_cell: SensorCell

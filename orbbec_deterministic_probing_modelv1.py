@@ -17,7 +17,6 @@ import torch.nn.functional as F
 from transformers import AutoImageProcessor
 
 from hardware.utils import (
-    ALL_CELLS,
     EXPOSURE_MS_VALUES,
     GAIN_VALUES,
     ContextKey,
@@ -80,6 +79,14 @@ CSV_FIELDNAMES = [
     "probability_improvement",
     "local_acceptance_probability",
     "expected_improvement",
+    "selection_source",
+    "raw_q_current",
+    "raw_q_challenger",
+    "tentative_switch",
+    "switch_confirmed",
+    "switch_rolled_back",
+    "challenger_cooldown",
+    "aged_belief_variance",
     "probe_stop_reason",
     "frame_action",
     "round_action",
@@ -635,6 +642,14 @@ class ModelV1Experiment:
             "probability_improvement": "",
             "local_acceptance_probability": "",
             "expected_improvement": "",
+            "selection_source": "",
+            "raw_q_current": "",
+            "raw_q_challenger": "",
+            "tentative_switch": 0,
+            "switch_confirmed": 0,
+            "switch_rolled_back": 0,
+            "challenger_cooldown": "",
+            "aged_belief_variance": "",
             "probe_stop_reason": "",
             "frame_action": "",
             "round_action": "",
@@ -843,6 +858,7 @@ class ModelV1Experiment:
     def run_round(self) -> None:
         context, stable, transition_contexts = self._context_state()
         context.validate()
+        self.policy.start_round(context)
         current_cell = (
             self.policy.cell_for_context(context, self.default_cell)
             if stable
@@ -856,6 +872,9 @@ class ModelV1Experiment:
         initial_row, initial_image, initial_depth = self._capture(
             current_cell, context, "initial"
         )
+        initial_row["aged_belief_variance"] = self.policy.belief(
+            context, current_cell
+        )[1]
         initial_future = self.executor.submit(
             self.predictor.predict,
             initial_image,
@@ -874,6 +893,8 @@ class ModelV1Experiment:
             uncertainty=float(initial_row["std"]),
             mu=float(initial_row["camera_bias"]),
         )
+        initial_row["selection_source"] = "raw_current"
+        initial_row["raw_q_current"] = initial_score.q
         initial_update = self.policy.observe(
             context, current_cell, initial_score
         )
@@ -898,20 +919,56 @@ class ModelV1Experiment:
             self.round_index += 1
             return
 
-        acceptable = self.policy.acceptable_cell(context, [current_cell])
-        if acceptable is not None:
+        switch_result, confirmation_cell = self.policy.resolve_tentative_switch(
+            context, current_cell, initial_score
+        )
+        if switch_result != "none":
+            initial_row["tentative_switch"] = 1
+            initial_row["raw_q_current"] = initial_score.q
+            initial_row["selection_source"] = f"tentative_{switch_result}"
+            initial_row[f"switch_{switch_result}"] = 1
+        if switch_result == "rolled_back":
+            initial_row["challenger_cooldown"] = self.policy.candidate_cooldown(
+                context, current_cell
+            )
+            rollback_action = (
+                "use"
+                if self.policy.observed_in_current_scene(
+                    context, confirmation_cell
+                )
+                else "offload"
+            )
+            final_decision = self.policy.complete_probe(
+                context,
+                action=rollback_action,
+                reason="tentative_switch_rolled_back",
+                selected_cell=confirmation_cell,
+            )
+            self._finish_decision([initial_row], final_decision)
+            self._apply_control_cell(confirmation_cell, reason=final_decision.reason)
+            if final_decision.action == "offload":
+                self.policy.invoke_offload(context, final_decision)
+            self.round_index += 1
+            return
+
+        if (
+            initial_decision.action == "use"
+            and self.policy.minimum_initial_probes_remaining(context) == 0
+        ):
             final_decision = self.policy.complete_probe(
                 context,
                 action="use",
                 reason="local_candidate_acceptable",
-                selected_cell=acceptable,
+                selected_cell=current_cell,
             )
             self._finish_decision([initial_row], final_decision)
             self.round_index += 1
             return
 
-        challenger, local_probability = self.policy.select_local_challenger(
-            context, current_cell
+        challenger, probability_improvement, improvement = (
+            self.policy.select_next_probe_cell(
+                context, current_cell, set()
+            )
         )
         if challenger is None or not self._probe_fits_budget(initial_row):
             reason = (
@@ -939,16 +996,18 @@ class ModelV1Experiment:
         print(
             f"[Probe] context={context.table_key} "
             f"challenger={challenger.cell_id} "
-            f"p_local={local_probability:.6f}"
+            f"p_imp={probability_improvement:.6f} ei={improvement:.6f}"
         )
+        challenger_aged_variance = self.policy.belief(context, challenger)[1]
         probe_row, probe_image, probe_depth = self._capture(
             challenger, context, "probe"
         )
         probe_row.update(
             {
                 "probe_step": 1,
-                "local_acceptance_probability": local_probability,
-                "expected_improvement": "",
+                "probability_improvement": probability_improvement,
+                "expected_improvement": improvement,
+                "aged_belief_variance": challenger_aged_variance,
             }
         )
         probe_future = self.executor.submit(
@@ -989,28 +1048,40 @@ class ModelV1Experiment:
             self.round_index += 1
             return
 
-        shortlist = [current_cell, challenger]
-        acceptable = self.policy.acceptable_cell(context, shortlist)
-        if acceptable is not None:
-            final_decision = self.policy.complete_probe(
-                context,
-                action="use",
-                reason="local_candidate_acceptable",
-                selected_cell=acceptable,
-            )
-        else:
-            selected = min(
-                shortlist,
-                key=lambda cell: (
-                    self.policy.belief(context, cell)[0],
-                    ALL_CELLS.index(cell),
-                ),
-            )
-            final_decision = self.policy.complete_probe(
-                context,
-                action="offload",
-                reason="stable_shortlist_failed",
-                selected_cell=selected,
+        selected = self.policy.select_raw_cell(
+            context,
+            current_cell,
+            initial_score,
+            challenger,
+            probe_score,
+        )
+        challenger_won = selected == challenger
+        selected_score = probe_score if challenger_won else initial_score
+        selected_is_acceptable = (
+            self.policy.decide(selected, selected_score).action == "use"
+            and self.policy.minimum_initial_probes_remaining(context) == 0
+        )
+        final_decision = self.policy.complete_probe(
+            context,
+            action="use" if selected_is_acceptable else "offload",
+            reason=(
+                "raw_candidate_acceptable"
+                if selected_is_acceptable
+                else "stable_shortlist_failed"
+            ),
+            selected_cell=selected,
+        )
+        selection_source = "raw_challenger" if challenger_won else "raw_current"
+        challenger_cooldown = self.policy.candidate_cooldown(context, challenger)
+        for row in round_rows:
+            row.update(
+                {
+                    "selection_source": selection_source,
+                    "raw_q_current": initial_score.q,
+                    "raw_q_challenger": probe_score.q,
+                    "tentative_switch": int(challenger_won),
+                    "challenger_cooldown": challenger_cooldown,
+                }
             )
 
         self._finish_decision(round_rows, final_decision)
@@ -1196,6 +1267,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--unobserved-prior-variance", type=float, default=0.04)
     parser.add_argument("--belief-variance-floor", type=float, default=1e-6)
+    parser.add_argument("--belief-process-variance", type=float, default=1e-4)
+    parser.add_argument("--maximum-belief-variance", type=float, default=0.04)
+    parser.add_argument("--challenger-cooldown-rounds", type=int, default=3)
+    parser.add_argument("--switch-confirmation-margin", type=float, default=0.01)
+    parser.add_argument(
+        "--belief-age-variance-per-cycle", type=float, default=1e-4
+    )
     parser.add_argument("--offload-command", type=str, default=None)
     parser.add_argument("--safety-config", type=Path, default=None)
 
@@ -1316,6 +1394,11 @@ def main() -> int:
             unobserved_prior_mean=args.unobserved_prior_mean,
             unobserved_prior_variance=args.unobserved_prior_variance,
             belief_variance_floor=args.belief_variance_floor,
+            belief_process_variance=args.belief_process_variance,
+            maximum_belief_variance=args.maximum_belief_variance,
+            challenger_cooldown_rounds=args.challenger_cooldown_rounds,
+            switch_confirmation_margin=args.switch_confirmation_margin,
+            belief_age_variance_per_cycle=args.belief_age_variance_per_cycle,
             offload_command=args.offload_command,
         )
 
