@@ -162,7 +162,12 @@ class CameraControlExperiment:
         else:
             self.policy.record_invalid(context, current, challenger, self.round_index)
             decision = PairwiseDecision(
-                PairStatus.INVALID_PAIR, current, 0.0, 0.0, 0.0, pair_mode
+                status=PairStatus.INVALID_PAIR,
+                selected_cell=current,
+                delta_mu=0.0,
+                pair_std=0.0,
+                effective_margin=0.0,
+                pair_mode=pair_mode,
             )
             selected_score, requested = current_score, False
             risk = float(current_score.mu) + self.config.policy.offload_uncertainty_weight * float(current_score.uncertainty)
@@ -178,7 +183,12 @@ class CameraControlExperiment:
             switch_event=decision.switch_event.value,
             delta_mu=decision.delta_mu if pair.valid else "",
             pair_std=decision.pair_std if pair.valid else "",
+            pair_z=decision.pair_z if pair.valid else "",
             effective_margin=decision.effective_margin if pair.valid else "",
+            pending_min_z=self.config.policy.pending_min_z,
+            pending_admitted=int(decision.pending_admitted),
+            pending_margin=self.config.policy.pending_margin,
+            pending_commit_z=self.config.policy.pending_commit_z,
             pair_capture_gap_ms=pair.gap_ms,
             capture_valid_pair=int(pair.valid),
             pair_invalid_reason=pair.invalid_reason,
@@ -203,7 +213,8 @@ class CameraControlExperiment:
                 pending_precision_sum=decision.pending_precision_sum,
                 aggregated_delta_mu=decision.aggregated_delta_mu,
                 aggregated_pair_std=decision.aggregated_pair_std,
-                aggregated_effective_margin=decision.aggregated_effective_margin,
+                aggregated_z=decision.aggregated_z,
+                aggregated_pending_margin=decision.aggregated_pending_margin,
             )
         for frame, score in zip((pair.current, pair.challenger), scores):
             values = dict(common)
@@ -278,11 +289,15 @@ class CameraControlExperiment:
                 edge.pending_weighted_delta_sum / precision if precision else ""
             ),
             "aggregated_pair_std": aggregate_std,
-            "aggregated_effective_margin": (
-                self.config.policy.switch_margin
-                + self.config.policy.pair_uncertainty_weight * aggregate_std
+            "aggregated_z": (
+                edge.pending_weighted_delta_sum / precision
+                / max(aggregate_std, self.config.policy.pending_std_floor)
                 if precision else ""
             ),
+            "aggregated_pending_margin": self.config.policy.pending_margin,
+            "pending_min_z": self.config.policy.pending_min_z,
+            "pending_margin": self.config.policy.pending_margin,
+            "pending_commit_z": self.config.policy.pending_commit_z,
         }
 
     def _warn(self, camera_ms: float, inference_ms: float, decision_ms: float) -> None:

@@ -86,8 +86,11 @@ class PairwiseDecision:
     pending_precision_sum: float = 0.0
     aggregated_delta_mu: float | None = None
     aggregated_pair_std: float | None = None
-    aggregated_effective_margin: float | None = None
     pending_age_rounds: int | None = None
+    pair_z: float = 0.0
+    pending_admitted: bool = False
+    aggregated_z: float | None = None
+    aggregated_pending_margin: float | None = None
 
 
 @dataclass(frozen=True)

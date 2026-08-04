@@ -13,8 +13,8 @@ from ati_mde_control.pairwise_policy import PairwisePolicy
 from hardware.utils import ContextKey, QScore, SensorCell
 
 
-def score(mu: float, batch: int = 1) -> QScore:
-    return QScore(mu + .01, .01, mu, {"mde_batch_size": batch, "mde_inference_ms": 1.0})
+def score(mu: float, batch: int = 1, std: float = .01) -> QScore:
+    return QScore(mu + std, std, mu, {"mde_batch_size": batch, "mde_inference_ms": 1.0})
 
 
 class Provider:
@@ -52,11 +52,12 @@ class Camera:
 class Predictor:
     device = "cpu"
 
-    def __init__(self, events, provider=None):
+    def __init__(self, events, provider=None, batch_results=None):
         self.events = events
         self.provider = provider
         self.single_calls = 0
         self.batch_sizes = []
+        self.batch_results = list(batch_results or [])
 
     def predict(self, image, context, exposure_us, gain):
         self.events.append("predict_single")
@@ -68,7 +69,7 @@ class Predictor:
         self.batch_sizes.append(len(images))
         if self.provider is not None:
             self.provider.current = ContextKey(1, 0)
-        return [score(.20, 2), score(.10, 2)]
+        return self.batch_results.pop(0) if self.batch_results else [score(.20, 2), score(.10, 2)]
 
 
 class Logger:
@@ -116,12 +117,14 @@ def config(policy=None):
     )
 
 
-def experiment(change_context_during_batch=False):
+def experiment(change_context_during_batch=False, batch_results=None):
     events = []
     provider = Provider()
     cfg = config()
     policy = PairwisePolicy(cfg.policy, SafetyPolicy())
-    predictor = Predictor(events, provider if change_context_during_batch else None)
+    predictor = Predictor(
+        events, provider if change_context_during_batch else None, batch_results
+    )
     logger = Logger()
     runtime = CameraControlExperiment(
         cfg,
@@ -163,6 +166,20 @@ class ExperimentTest(unittest.TestCase):
         runtime.run_round()
         self.assertEqual(predictor.batch_sizes, [2])
         self.assertEqual(predictor.single_calls, 0)
+
+    def test_pending_recheck_logging_contains_both_observations(self) -> None:
+        runtime, _, _, _, _, logger = experiment(batch_results=[
+            [score(.112, 2, .03), score(.10, 2, .03)],
+            [score(.13, 2, .005), score(.10, 2, .005)],
+        ])
+        runtime.run_round()
+        runtime.run_round()
+        row = logger.rows[-2]
+        self.assertEqual(row["pair_status"], "challenger_won")
+        self.assertEqual(row["pair_mode"], "pending_recheck")
+        self.assertEqual(row["pending_observation_count"], 2)
+        self.assertEqual(row["switch_event"], "pending_committed")
+        self.assertGreater(row["aggregated_z"], 0)
 
     def test_immediate_commit_changes_next_initial_frame_without_dwell(self) -> None:
         runtime, _, _, predictor, _, _ = experiment()
@@ -231,10 +248,10 @@ class ExperimentTest(unittest.TestCase):
     def test_summary_counts_only_commit_events_as_switches(self) -> None:
         logger = CaptureLogger.__new__(CaptureLogger)
         logger.rows = []
-        for round_index, status, event, observations in (
-            (0, "ambiguous", "pending_started", 1),
-            (1, "ambiguous", "pending_committed", 2),
-            (2, "challenger_won", "immediate_commit", ""),
+        for round_index, status, event, observations, mode, admitted in (
+            (0, "ambiguous", "pending_started", 1, "normal_search", 1),
+            (1, "ambiguous", "pending_committed", 2, "pending_recheck", 0),
+            (2, "challenger_won", "immediate_commit", "", "normal_search", 0),
         ):
             for role, delivered in (("initial", 1), ("challenger", 0)):
                 logger.rows.append({
@@ -242,7 +259,9 @@ class ExperimentTest(unittest.TestCase):
                     "capture_role": role,
                     "output_delivered": delivered,
                     "pair_status": status,
+                    "pair_mode": mode,
                     "switch_event": event,
+                    "pending_admitted": admitted,
                     "pending_observation_count": observations,
                     "capture_valid_pair": 1,
                     "abs_rel": .1,
@@ -257,6 +276,9 @@ class ExperimentTest(unittest.TestCase):
         self.assertEqual(summary["pending_started_count"], 1)
         self.assertEqual(summary["pending_committed_count"], 1)
         self.assertEqual(summary["mean_pending_observation_count"], 1.5)
+        self.assertEqual(summary["pending_admission_rate"], .5)
+        self.assertEqual(summary["pending_commit_rate"], 1.0)
+        self.assertEqual(summary["immediate_commit_count"], 1)
 
 
 if __name__ == "__main__":

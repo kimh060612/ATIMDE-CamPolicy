@@ -75,6 +75,7 @@ class PairwisePolicy:
         challenger_mu, challenger_std = self._values(challenger_score)
         delta_mu = current_mu - challenger_mu
         pair_std = math.hypot(current_std, challenger_std)
+        pair_z = delta_mu / max(pair_std, self.config.pending_std_floor)
         margin = self.config.switch_margin + self.config.pair_uncertainty_weight * pair_std
         status = (
             PairStatus.CHALLENGER_WON
@@ -104,78 +105,82 @@ class PairwisePolicy:
         if direction is None:
             raise RuntimeError("Pair resolved without a search direction.")
         event = SwitchEvent.NONE
+        admitted = False
         evidence = (0, 0.0, 0.0, None, None, None, None)
-        if status is PairStatus.CHALLENGER_WON:
-            if pair_mode is PairMode.PENDING_RECHECK:
-                evidence = self._evidence(edge, round_index)
+        if status is PairStatus.AMBIGUOUS:
+            edge.ambiguous_count += 1
+
+        if pair_mode is PairMode.PENDING_RECHECK:
+            self._add_pending_observation(edge, delta_mu, pair_std)
+            evidence = self._evidence(edge, round_index)
+            count, _, _, aggregate, _, aggregate_z, _ = evidence
+            if (
+                aggregate is not None
+                and aggregate > self.config.pending_margin
+                and aggregate_z >= self.config.pending_commit_z
+            ):
                 event = SwitchEvent.PENDING_COMMITTED
+                self._commit(state, challenger, direction)
+            elif (
+                aggregate is not None
+                and aggregate < -self.config.pending_margin
+                and aggregate_z <= -self.config.pending_commit_z
+            ):
+                event = SwitchEvent.PENDING_REJECTED
+                self._reject(state, direction)
+            elif count >= self.config.max_pending_observations:
+                event = SwitchEvent.PENDING_EXHAUSTED
+                edge.ambiguous_cooldown = self.config.ambiguous_edge_cooldown_rounds
+                clear_pending(state)
+                local_search.mark_direction_tested(state, direction)
+                state.search_direction = None
             else:
-                event = SwitchEvent.IMMEDIATE_COMMIT
+                event = SwitchEvent.PENDING_UPDATED
+                state.search_direction = direction
+        elif status is PairStatus.CHALLENGER_WON:
+            event = SwitchEvent.IMMEDIATE_COMMIT
             self._commit(state, challenger, direction)
         elif status is PairStatus.CURRENT_WON:
-            if pair_mode is PairMode.PENDING_RECHECK:
-                evidence = self._evidence(edge, round_index)
-                event = SwitchEvent.PENDING_REJECTED
             self._reject(state, direction)
+        elif delta_mu > 0 and pair_z >= self.config.pending_min_z:
+            edge.pending = True
+            edge.pending_started_round = round_index
+            state.pending_edge_from_id = current.cell_id
+            state.pending_edge_to_id = challenger.cell_id
+            state.pending_axis = state.search_axis
+            state.pending_direction = direction
+            self._add_pending_observation(edge, delta_mu, pair_std)
+            evidence = self._evidence(edge, round_index)
+            event = SwitchEvent.PENDING_STARTED
+            admitted = True
+            state.search_direction = direction
         else:
-            edge.ambiguous_count += 1
-            if delta_mu > 0 or pair_mode is PairMode.PENDING_RECHECK:
-                if not edge.pending:
-                    edge.pending = True
-                    edge.pending_started_round = round_index
-                    state.pending_edge_from_id = current.cell_id
-                    state.pending_edge_to_id = challenger.cell_id
-                    state.pending_axis = state.search_axis
-                    state.pending_direction = direction
-                    event = SwitchEvent.PENDING_STARTED
-                else:
-                    event = SwitchEvent.PENDING_UPDATED
-                variance = max(
-                    pair_std * pair_std,
-                    self.config.pending_std_floor * self.config.pending_std_floor,
-                )
-                precision = 1.0 / variance
-                edge.pending_weighted_delta_sum += delta_mu * precision
-                edge.pending_precision_sum += precision
-                edge.pending_observation_count += 1
-                evidence = self._evidence(edge, round_index)
-                count, _, _, aggregate, _, aggregate_margin, _ = evidence
-                if aggregate is not None and aggregate > aggregate_margin:
-                    event = SwitchEvent.PENDING_COMMITTED
-                    self._commit(state, challenger, direction)
-                elif aggregate is not None and aggregate < -aggregate_margin:
-                    event = SwitchEvent.PENDING_REJECTED
-                    self._reject(state, direction)
-                elif count >= self.config.max_pending_observations:
-                    event = SwitchEvent.PENDING_EXHAUSTED
-                    edge.ambiguous_cooldown = self.config.ambiguous_edge_cooldown_rounds
-                    clear_pending(state)
-                    local_search.mark_direction_tested(state, direction)
-                    state.search_direction = None
-                else:
-                    state.search_direction = direction
-            else:
-                edge.ambiguous_cooldown = self.config.ambiguous_edge_cooldown_rounds
-                if edge.ambiguous_count >= 2:
-                    local_search.mark_direction_tested(state, direction)
-                state.search_direction = None
+            edge.ambiguous_cooldown = self.config.ambiguous_edge_cooldown_rounds
+            if edge.ambiguous_count >= 2:
+                local_search.mark_direction_tested(state, direction)
+            state.search_direction = None
         state.probe_pending = True
-        count, weighted, precision, aggregate, aggregate_std, aggregate_margin, age = evidence
+        count, weighted, precision, aggregate, aggregate_std, aggregate_z, age = evidence
         return PairwiseDecision(
-            status,
-            CELL_BY_ID[state.active_cell_id],
-            delta_mu,
-            pair_std,
-            margin,
-            pair_mode,
-            event,
-            count,
-            weighted,
-            precision,
-            aggregate,
-            aggregate_std,
-            aggregate_margin,
-            age,
+            status=status,
+            selected_cell=CELL_BY_ID[state.active_cell_id],
+            delta_mu=delta_mu,
+            pair_std=pair_std,
+            effective_margin=margin,
+            pair_mode=pair_mode,
+            switch_event=event,
+            pending_observation_count=count,
+            pending_weighted_delta_sum=weighted,
+            pending_precision_sum=precision,
+            aggregated_delta_mu=aggregate,
+            aggregated_pair_std=aggregate_std,
+            pending_age_rounds=age,
+            pair_z=pair_z,
+            pending_admitted=admitted,
+            aggregated_z=aggregate_z,
+            aggregated_pending_margin=(
+                self.config.pending_margin if aggregate is not None else None
+            ),
         )
 
     def record_invalid(
@@ -245,7 +250,7 @@ class PairwisePolicy:
             return (0, 0.0, 0.0, None, None, None, None)
         delta = edge.pending_weighted_delta_sum / precision
         std = math.sqrt(1.0 / precision)
-        margin = self.config.switch_margin + self.config.pair_uncertainty_weight * std
+        z = delta / max(std, self.config.pending_std_floor)
         age = (
             round_index - edge.pending_started_round
             if edge.pending_started_round is not None else None
@@ -256,9 +261,21 @@ class PairwisePolicy:
             precision,
             delta,
             std,
-            margin,
+            z,
             age,
         )
+
+    def _add_pending_observation(
+        self, edge: LocalEdgeState, delta_mu: float, pair_std: float
+    ) -> None:
+        variance = max(
+            pair_std * pair_std,
+            self.config.pending_std_floor * self.config.pending_std_floor,
+        )
+        precision = 1.0 / variance
+        edge.pending_weighted_delta_sum += delta_mu * precision
+        edge.pending_precision_sum += precision
+        edge.pending_observation_count += 1
 
     @staticmethod
     def _commit(state, challenger: SensorCell, direction: SearchDirection) -> None:

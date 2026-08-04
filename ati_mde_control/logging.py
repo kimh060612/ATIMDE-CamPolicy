@@ -24,7 +24,8 @@ CSV_FIELDS = (
     "search_axis", "search_direction", "search_cycle_complete", "cycle_had_switch",
     "probe_pending_before", "probe_pending_after", "rounds_since_valid_probe",
     "challenger_cell_id", "pair_status", "pair_mode", "switch_event",
-    "delta_mu", "pair_std", "effective_margin",
+    "delta_mu", "pair_std", "pair_z", "effective_margin",
+    "pending_min_z", "pending_admitted", "pending_margin", "pending_commit_z",
     "pair_capture_gap_ms", "capture_valid_pair", "pair_invalid_reason",
     "edge_valid_count", "edge_invalid_count", "edge_invalid_cooldown",
     "edge_ambiguous_count", "edge_ambiguous_cooldown", "consecutive_invalid_pairs",
@@ -32,7 +33,7 @@ CSV_FIELDS = (
     "pending_edge_from_id", "pending_edge_to_id", "pending_observation_count",
     "max_pending_observations", "pending_age_rounds", "pending_weighted_delta_sum",
     "pending_precision_sum", "aggregated_delta_mu", "aggregated_pair_std",
-    "aggregated_effective_margin", "immediate_commit", "pending_commit",
+    "aggregated_z", "aggregated_pending_margin", "immediate_commit", "pending_commit",
     "pending_timeout", "camera_bias", "std", "q",
     "mde_batch_size", "mde_inference_ms", "camera_parameter_ms",
     "control_decision_delay_ms", "offload_risk", "offload_requested", "selected",
@@ -44,6 +45,7 @@ CSV_FIELDS = (
     "pair_gap_p50_ms", "pair_gap_p95_ms", "effective_output_rate_hz", "output_coverage",
     "pending_started_count", "pending_committed_count", "pending_rejected_count",
     "pending_exhausted_count", "pending_timeout_count", "mean_pending_observation_count",
+    "pending_admission_rate", "pending_commit_rate", "immediate_commit_count",
 )
 
 
@@ -142,6 +144,9 @@ class CaptureLogger:
             and row.get("pending_observation_count", "") != ""
         ]
         event_count = lambda event: sum(row.get("switch_event") == event for row in initial)
+        normal_pairs = [row for row in valid if row.get("pair_mode") == "normal_search"]
+        admitted = sum(row.get("pending_admitted") == 1 for row in normal_pairs)
+        pending_started = event_count("pending_started")
         return {
             "capture_index": len(self.rows),
             "abs_rel": mean(primary_abs_rel),
@@ -159,10 +164,13 @@ class CaptureLogger:
             "pair_gap_p95_ms": float(np.percentile(gaps, 95)) if gaps.size else "",
             "effective_output_rate_hz": (len(initial) - 1) / duration if duration > 0 else "",
             "output_coverage": rate(len(initial), len({row["round_index"] for row in self.rows})),
-            "pending_started_count": event_count("pending_started"),
+            "pending_started_count": pending_started,
             "pending_committed_count": event_count("pending_committed"),
             "pending_rejected_count": event_count("pending_rejected"),
             "pending_exhausted_count": event_count("pending_exhausted"),
             "pending_timeout_count": event_count("pending_timeout"),
+            "pending_admission_rate": rate(admitted, len(normal_pairs)),
+            "pending_commit_rate": rate(event_count("pending_committed"), pending_started),
             "mean_pending_observation_count": mean(pending_counts),
+            "immediate_commit_count": event_count("immediate_commit"),
         }
