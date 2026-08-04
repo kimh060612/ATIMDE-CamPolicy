@@ -96,6 +96,12 @@ CSV_FIELDNAMES = [
     "capture_context_challenger",
     "capture_valid_pair",
     "initial_inference_count",
+    "edge_invalid_count",
+    "edge_consecutive_invalid_count",
+    "edge_invalid_cooldown",
+    "context_consecutive_invalid_pairs",
+    "force_current_only_rounds",
+    "forced_current_only",
     "probe_trigger_threshold",
     "switch_margin",
     "active_cell_before",
@@ -687,6 +693,12 @@ class ModelV1Experiment:
             "capture_context_challenger": "",
             "capture_valid_pair": "",
             "initial_inference_count": 0,
+            "edge_invalid_count": "",
+            "edge_consecutive_invalid_count": "",
+            "edge_invalid_cooldown": "",
+            "context_consecutive_invalid_pairs": "",
+            "force_current_only_rounds": "",
+            "forced_current_only": 0,
             "probe_trigger_threshold": self.policy.probe_trigger_threshold,
             "switch_margin": self.policy.switch_margin,
             "active_cell_before": "",
@@ -884,6 +896,12 @@ class ModelV1Experiment:
                 "probe_pending_before": pending,
                 "probe_pending_after": pending,
                 "bootstrap_probes_remaining": bootstrap,
+                "context_consecutive_invalid_pairs": (
+                    state.consecutive_invalid_pairs if state is not None else ""
+                ),
+                "force_current_only_rounds": (
+                    state.force_current_only_rounds if state is not None else ""
+                ),
                 "capture_context_initial": latched_context.table_key,
                 "pair_status": "not_probed",
                 "initial_inference_count": 1,
@@ -920,6 +938,9 @@ class ModelV1Experiment:
         latched_context: ContextKey,
         current_cell: SensorCell,
         active_cell_before: str,
+        *,
+        forced: bool = False,
+        reason: str = "current_only",
     ) -> None:
         state = self.policy.state_for_context(latched_context)
         pending_before = state.probe_pending
@@ -963,7 +984,7 @@ class ModelV1Experiment:
             )
             self.policy.complete_round(latched_context)
             pair_status = "not_probed"
-            selection_source = "current_only"
+            selection_source = reason
             should_offload, offload_risk = self.policy.evaluate_offload(
                 current_mu, current_std, pair_status
             )
@@ -974,6 +995,11 @@ class ModelV1Experiment:
             should_offload = False
             _, offload_risk = self.policy.evaluate_offload(
                 current_mu, current_std, "not_probed"
+            )
+
+        if forced:
+            state.force_current_only_rounds = max(
+                state.force_current_only_rounds - 1, 0
             )
 
         row.update(
@@ -991,6 +1017,11 @@ class ModelV1Experiment:
                 "bootstrap_probes_remaining": (
                     state.bootstrap_probes_remaining
                 ),
+                "context_consecutive_invalid_pairs": (
+                    state.consecutive_invalid_pairs
+                ),
+                "force_current_only_rounds": state.force_current_only_rounds,
+                "forced_current_only": int(forced),
             }
         )
         decision = PolicyDecision(
@@ -1025,7 +1056,10 @@ class ModelV1Experiment:
         )
         if challenger is None:
             self.run_current_only_round(
-                latched_context, current_cell, active_cell_before
+                latched_context,
+                current_cell,
+                active_cell_before,
+                reason="all_challengers_cooling_down",
             )
             return
 
@@ -1120,6 +1154,7 @@ class ModelV1Experiment:
                 selected_mu, selected_std, pair.status
             )
             selection_source = f"pairwise_{pair.status}"
+            edge = state.edges[(current_cell.cell_id, challenger.cell_id)]
             metrics = {
                 "delta_mu": pair.delta_mu,
                 "pair_std": pair.pair_std,
@@ -1127,10 +1162,17 @@ class ModelV1Experiment:
                 "pair_confidence": pair.confidence,
                 "edge_ema_before": pair.edge_ema_before,
                 "edge_ema_after": pair.edge_ema_after,
+                "edge_invalid_count": edge.invalid_count,
+                "edge_consecutive_invalid_count": (
+                    edge.consecutive_invalid_count
+                ),
+                "edge_invalid_cooldown": edge.invalid_cooldown,
             }
         else:
-            state.probe_pending = True
             pair = None
+            edge, selection_source = self.policy.record_invalid_pair(
+                latched_context, current_cell, challenger
+            )
             selected_score = current_score
             selected_mu = current_mu
             selected_std = current_std
@@ -1138,8 +1180,13 @@ class ModelV1Experiment:
             _, offload_risk = self.policy.evaluate_offload(
                 selected_mu, selected_std, "not_probed"
             )
-            selection_source = "stale_pair_discarded"
-            metrics = {}
+            metrics = {
+                "edge_invalid_count": edge.invalid_count,
+                "edge_consecutive_invalid_count": (
+                    edge.consecutive_invalid_count
+                ),
+                "edge_invalid_cooldown": edge.invalid_cooldown,
+            }
 
         pair_status = pair.status if pair is not None else "invalid_pair"
         selected_cell = (
@@ -1164,6 +1211,11 @@ class ModelV1Experiment:
                 "bootstrap_probes_remaining": (
                     state.bootstrap_probes_remaining
                 ),
+                "context_consecutive_invalid_pairs": (
+                    state.consecutive_invalid_pairs
+                ),
+                "force_current_only_rounds": state.force_current_only_rounds,
+                "forced_current_only": 0,
                 **metrics,
             }
         )
@@ -1208,7 +1260,15 @@ class ModelV1Experiment:
             f"\n[Round {self.round_index}] context={latched_context.table_key} "
             f"cell={current_cell.cell_id} stable=True"
         )
-        if state.bootstrap_probes_remaining > 0 or state.probe_pending:
+        if state.force_current_only_rounds > 0:
+            self.run_current_only_round(
+                latched_context,
+                current_cell,
+                active_cell_before,
+                forced=True,
+                reason="invalid_pair_recovery",
+            )
+        elif state.bootstrap_probes_remaining > 0 or state.probe_pending:
             self.run_back_to_back_pair_round(
                 latched_context, current_cell, active_cell_before
             )
@@ -1355,6 +1415,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--probe-trigger-threshold", type=float, default=0.11)
     parser.add_argument("--switch-margin", type=float, default=0.01)
     parser.add_argument("--challenger-cooldown-rounds", type=int, default=5)
+    parser.add_argument("--invalid-edge-cooldown-rounds", type=int, default=5)
+    parser.add_argument("--max-consecutive-invalid-pairs", type=int, default=3)
+    parser.add_argument("--recovery-current-only-rounds", type=int, default=2)
     parser.add_argument("--pair-uncertainty-weight", type=float, default=0.25)
     parser.add_argument("--reference-pair-std", type=float, default=0.03)
     parser.add_argument("--edge-ema-alpha", type=float, default=0.3)
@@ -1439,6 +1502,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--context-debounce-ms must be non-negative.")
     if args.context_debounce_samples < 1:
         parser.error("--context-debounce-samples must be positive.")
+    if args.invalid_edge_cooldown_rounds < 1:
+        parser.error("--invalid-edge-cooldown-rounds must be positive.")
+    if args.max_consecutive_invalid_pairs < 1:
+        parser.error("--max-consecutive-invalid-pairs must be positive.")
+    if args.recovery_current_only_rounds < 1:
+        parser.error("--recovery-current-only-rounds must be positive.")
     if (
         not math.isfinite(args.max_pair_capture_gap_ms)
         or args.max_pair_capture_gap_ms <= 0.0
@@ -1471,6 +1540,9 @@ def main() -> int:
             probe_trigger_threshold=args.probe_trigger_threshold,
             switch_margin=args.switch_margin,
             challenger_cooldown_rounds=args.challenger_cooldown_rounds,
+            invalid_edge_cooldown_rounds=args.invalid_edge_cooldown_rounds,
+            max_consecutive_invalid_pairs=args.max_consecutive_invalid_pairs,
+            recovery_current_only_rounds=args.recovery_current_only_rounds,
             pair_uncertainty_weight=args.pair_uncertainty_weight,
             reference_pair_std=args.reference_pair_std,
             edge_ema_alpha=args.edge_ema_alpha,

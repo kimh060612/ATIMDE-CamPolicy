@@ -80,6 +80,9 @@ class EdgeStats:
     comparison_count: int = 0
     challenger_win_count: int = 0
     ambiguous_count: int = 0
+    invalid_count: int = 0
+    consecutive_invalid_count: int = 0
+    invalid_cooldown: int = 0
 
 
 @dataclass
@@ -87,6 +90,8 @@ class ContextState:
     active_cell_id: Optional[str] = None
     probe_pending: bool = True
     bootstrap_probes_remaining: int = 1
+    consecutive_invalid_pairs: int = 0
+    force_current_only_rounds: int = 0
     cells: dict[str, CellStats] = field(
         default_factory=lambda: {
             cell.cell_id: CellStats() for cell in ALL_CELLS

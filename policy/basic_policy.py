@@ -165,6 +165,9 @@ class ATIMDECameraProbingController:
         probe_trigger_threshold: float = 0.11,
         switch_margin: float = 0.01,
         challenger_cooldown_rounds: int = 5,
+        invalid_edge_cooldown_rounds: int = 5,
+        max_consecutive_invalid_pairs: int = 3,
+        recovery_current_only_rounds: int = 2,
         pair_uncertainty_weight: float = 0.25,
         reference_pair_std: float = 0.03,
         edge_ema_alpha: float = 0.3,
@@ -179,6 +182,12 @@ class ATIMDECameraProbingController:
             raise ValueError("switch_margin must be finite and non-negative.")
         if challenger_cooldown_rounds < 0:
             raise ValueError("challenger_cooldown_rounds must be non-negative.")
+        if invalid_edge_cooldown_rounds < 1:
+            raise ValueError("invalid_edge_cooldown_rounds must be positive.")
+        if max_consecutive_invalid_pairs < 1:
+            raise ValueError("max_consecutive_invalid_pairs must be positive.")
+        if recovery_current_only_rounds < 1:
+            raise ValueError("recovery_current_only_rounds must be positive.")
         if (
             not math.isfinite(pair_uncertainty_weight)
             or pair_uncertainty_weight < 0.0
@@ -206,6 +215,9 @@ class ATIMDECameraProbingController:
         self.probe_trigger_threshold = probe_trigger_threshold
         self.switch_margin = switch_margin
         self.challenger_cooldown_rounds = challenger_cooldown_rounds
+        self.invalid_edge_cooldown_rounds = invalid_edge_cooldown_rounds
+        self.max_consecutive_invalid_pairs = max_consecutive_invalid_pairs
+        self.recovery_current_only_rounds = recovery_current_only_rounds
         self.pair_uncertainty_weight = pair_uncertainty_weight
         self.reference_pair_std = reference_pair_std
         self.edge_ema_alpha = edge_ema_alpha
@@ -265,7 +277,14 @@ class ATIMDECameraProbingController:
         candidates = [
             cell
             for cell in self.safety_policy.safe_cells(context)
-            if cell != current and state.cells[cell.cell_id].cooldown == 0
+            if cell != current
+            and state.cells[cell.cell_id].cooldown == 0
+            and (
+                state.edges.get(
+                    (current.cell_id, cell.cell_id), EdgeStats()
+                ).invalid_cooldown
+                == 0
+            )
         ]
         if not candidates:
             return None
@@ -322,6 +341,8 @@ class ATIMDECameraProbingController:
         edge = state.edges.setdefault(
             (current.cell_id, challenger.cell_id), EdgeStats()
         )
+        edge.consecutive_invalid_count = 0
+        state.consecutive_invalid_pairs = 0
         edge_ema_before = edge.ema_improvement
         effective_alpha = self.edge_ema_alpha * confidence
         edge.ema_improvement = (
@@ -351,6 +372,31 @@ class ATIMDECameraProbingController:
             edge.ema_improvement,
         )
 
+    def record_invalid_pair(
+        self,
+        context: ContextKey,
+        current: SensorCell,
+        challenger: SensorCell,
+    ) -> tuple[EdgeStats, str]:
+        state = self.state_for_context(context)
+        edge = state.edges.setdefault(
+            (current.cell_id, challenger.cell_id), EdgeStats()
+        )
+        edge.invalid_count += 1
+        edge.consecutive_invalid_count += 1
+        edge.invalid_cooldown = self.invalid_edge_cooldown_rounds
+        state.consecutive_invalid_pairs += 1
+        if (
+            state.consecutive_invalid_pairs
+            >= self.max_consecutive_invalid_pairs
+        ):
+            state.force_current_only_rounds = self.recovery_current_only_rounds
+            state.probe_pending = False
+            state.consecutive_invalid_pairs = 0
+            return edge, "invalid_pair_recovery"
+        state.probe_pending = True
+        return edge, "invalid_pair_edge_cooldown"
+
     def evaluate_offload(
         self,
         selected_mu: float,
@@ -367,8 +413,11 @@ class ATIMDECameraProbingController:
         return should_offload, risk
 
     def complete_round(self, context: ContextKey) -> None:
-        for stats in self.state_for_context(context).cells.values():
+        state = self.state_for_context(context)
+        for stats in state.cells.values():
             stats.cooldown = max(stats.cooldown - 1, 0)
+        for edge in state.edges.values():
+            edge.invalid_cooldown = max(edge.invalid_cooldown - 1, 0)
 
     def active_cell_id(self, context: ContextKey) -> Optional[str]:
         state = self.context_states.get(context.table_key)

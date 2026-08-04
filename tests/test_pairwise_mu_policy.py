@@ -41,6 +41,9 @@ class PairwiseMuPolicyTest(unittest.TestCase):
             "probe_trigger_threshold": 0.11,
             "switch_margin": 0.01,
             "challenger_cooldown_rounds": 5,
+            "invalid_edge_cooldown_rounds": 5,
+            "max_consecutive_invalid_pairs": 3,
+            "recovery_current_only_rounds": 2,
             "pair_uncertainty_weight": 0.25,
             "reference_pair_std": 0.03,
             "edge_ema_alpha": 0.3,
@@ -429,11 +432,22 @@ class PairwiseMuPolicyTest(unittest.TestCase):
 
         state = controller.state_for_context(self.context)
         self.assertEqual(state.active_cell_id, current.cell_id)
-        self.assertEqual(state.edges, {})
+        edge = next(iter(state.edges.values()))
+        self.assertEqual(edge.ema_improvement, 0.0)
+        self.assertEqual(edge.comparison_count, 0)
+        self.assertEqual(edge.invalid_count, 1)
+        self.assertEqual(edge.consecutive_invalid_count, 1)
+        self.assertEqual(edge.invalid_cooldown, 5)
         self.assertTrue(state.probe_pending)
         self.assertEqual(state.bootstrap_probes_remaining, 1)
         self.assertTrue(all(row["capture_valid_pair"] == 0 for row in rows))
         self.assertTrue(all(row["pair_status"] == "invalid_pair" for row in rows))
+        self.assertTrue(
+            all(
+                row["selection_source"] == "invalid_pair_edge_cooldown"
+                for row in rows
+            )
+        )
 
     def test_pair_over_capture_gap_limit_is_invalid(self) -> None:
         controller = self.controller()
@@ -449,10 +463,134 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         self.run_runtime(experiment)
 
         state = controller.state_for_context(self.context)
-        self.assertEqual(state.edges, {})
+        edge = next(iter(state.edges.values()))
+        self.assertEqual(edge.comparison_count, 0)
+        self.assertEqual(edge.invalid_cooldown, 5)
         self.assertTrue(state.probe_pending)
         self.assertTrue(all(row["pair_capture_gap_ms"] == 1.0 for row in rows))
         self.assertTrue(all(row["capture_valid_pair"] == 0 for row in rows))
+
+    def test_invalid_edge_is_skipped_for_another_challenger(self) -> None:
+        controller = self.controller()
+        current = CELL_BY_ID["E04_G016"]
+        failed = CELL_BY_ID["E04_G128"]
+        controller.cell_for_context(self.context, current)
+        controller.record_invalid_pair(self.context, current, failed)
+
+        selected = controller.select_challenger(self.context, current)
+
+        self.assertNotEqual(selected, failed)
+        self.assertEqual(selected, CELL_BY_ID["E32_G016"])
+
+    def test_all_cooling_challengers_fall_back_to_current_only(self) -> None:
+        controller = self.controller()
+        current = CELL_BY_ID["E04_G016"]
+        controller.cell_for_context(self.context, current)
+        state = controller.state_for_context(self.context)
+        for cell in ALL_CELLS:
+            if cell != current:
+                state.cells[cell.cell_id].cooldown = 1
+        experiment, captures, rows, _ = self.runtime(
+            controller,
+            initial_scores=[score(0.30)],
+        )
+
+        self.run_runtime(experiment)
+
+        self.assertEqual([role for role, _, _ in captures], ["initial"])
+        self.assertEqual(
+            rows[0]["selection_source"],
+            "all_challengers_cooling_down",
+        )
+
+    def test_three_invalid_pairs_force_two_current_only_rounds(self) -> None:
+        controller = self.controller()
+        current = CELL_BY_ID["E04_G016"]
+        controller.cell_for_context(self.context, current)
+        experiment, captures, rows, _ = self.runtime(
+            controller,
+            initial_scores=[
+                score(0.30),
+                score(0.30),
+                score(0.30),
+                score(0.30),
+                score(0.05),
+            ],
+            challenger_scores=[score(0.10), score(0.10), score(0.10)],
+        )
+        experiment.max_pair_capture_gap_ms = 0.5
+
+        self.run_runtime(experiment, rounds=3)
+
+        state = controller.state_for_context(self.context)
+        self.assertEqual(state.force_current_only_rounds, 2)
+        self.assertFalse(state.probe_pending)
+        self.assertEqual(len(state.edges), 3)
+        self.assertTrue(
+            all(edge.comparison_count == 0 for edge in state.edges.values())
+        )
+        self.assertTrue(
+            all(
+                row["selection_source"] == "invalid_pair_edge_cooldown"
+                for row in rows[:4]
+            )
+        )
+        self.assertTrue(
+            all(
+                row["selection_source"] == "invalid_pair_recovery"
+                for row in rows[4:6]
+            )
+        )
+
+        self.run_runtime(experiment, rounds=2)
+
+        roles = [role for role, _, _ in captures]
+        self.assertEqual(roles.count("probe"), 3)
+        self.assertEqual(roles[-2:], ["initial", "initial"])
+        forced_rows = rows[-2:]
+        self.assertTrue(
+            all(row["forced_current_only"] == 1 for row in forced_rows)
+        )
+        self.assertTrue(
+            all(
+                row["selection_source"] == "invalid_pair_recovery"
+                for row in forced_rows
+            )
+        )
+        self.assertEqual(state.force_current_only_rounds, 0)
+        self.assertFalse(state.probe_pending)
+
+    def test_valid_pair_resets_invalid_counters(self) -> None:
+        controller = self.controller()
+        current, challenger = ALL_CELLS[:2]
+        controller.cell_for_context(self.context, current)
+        edge, _ = controller.record_invalid_pair(
+            self.context, current, challenger
+        )
+
+        controller.resolve_challenger(
+            self.context, current, 0.30, 0.01, challenger, 0.295, 0.01
+        )
+
+        state = controller.state_for_context(self.context)
+        self.assertEqual(edge.consecutive_invalid_count, 0)
+        self.assertEqual(state.consecutive_invalid_pairs, 0)
+
+    def test_cooldowns_stop_at_zero(self) -> None:
+        controller = self.controller()
+        current, challenger = ALL_CELLS[:2]
+        state = controller.state_for_context(self.context)
+        state.cells[challenger.cell_id].cooldown = 1
+        edge, _ = controller.record_invalid_pair(
+            self.context, current, challenger
+        )
+        edge.invalid_cooldown = 1
+
+        controller.complete_round(self.context)
+        controller.complete_round(self.context)
+
+        self.assertEqual(state.cells[challenger.cell_id].cooldown, 0)
+        self.assertEqual(edge.invalid_cooldown, 0)
 
     def test_unobserved_challengers_follow_grid_diverse_order(self) -> None:
         controller = self.controller()
