@@ -24,7 +24,6 @@ CSV_FIELDS = (
     "search_axis", "search_direction", "search_cycle_complete", "cycle_had_switch",
     "probe_pending_before", "probe_pending_after", "rounds_since_valid_probe",
     "challenger_cell_id", "pair_status", "delta_mu", "pair_std", "effective_margin",
-    "pair_mode", "switch_event", "round_reason",
     "pair_capture_gap_ms", "capture_valid_pair", "pair_invalid_reason",
     "edge_valid_count", "edge_invalid_count", "edge_invalid_cooldown",
     "edge_ambiguous_count", "edge_ambiguous_cooldown", "consecutive_invalid_pairs",
@@ -32,15 +31,10 @@ CSV_FIELDS = (
     "mde_batch_size", "mde_inference_ms", "camera_parameter_ms",
     "control_decision_delay_ms", "offload_risk", "offload_requested", "selected",
     "initial_inference_count",
-    "pending_switch_from_id", "pending_switch_to_id", "pending_switch_wins",
-    "switch_confirmations_required", "switch_confirmation_age", "rollback_cell_id",
-    "rollback_verification_pending", "post_switch_dwell_remaining",
-    "rollback_verification_age", "committed_switch", "rollback_applied",
     "image_path", "depth_path", "abs_rel", "a1", "valid_depth_pixels",
     "evaluation_inference_ms", "evaluation_error", "probe_overhead", "valid_pair_rate",
     "invalid_pair_rate", "ambiguous_pair_rate", "switch_count", "switch_precision",
-    "harmful_switch_rate", "rollback_count", "confirmation_pending_count",
-    "parameter_occupancy", "mean_decision_latency_ms",
+    "harmful_switch_rate", "parameter_occupancy", "mean_decision_latency_ms",
     "pair_gap_p50_ms", "pair_gap_p95_ms", "effective_output_rate_hz", "output_coverage",
 )
 
@@ -114,7 +108,7 @@ class CaptureLogger:
         probes = [row for row in self.rows if row["capture_role"] == "challenger"]
         pair_rows = [row for row in initial if row["pair_status"] not in ("", "not_probed")]
         valid = [row for row in pair_rows if row["capture_valid_pair"] == 1]
-        switched = [row for row in valid if row.get("switch_event") == "committed"]
+        switched = [row for row in valid if row["pair_status"] == "challenger_won"]
         comparisons = []
         for row in switched:
             probe = next((item for item in probes if item["round_index"] == row["round_index"]), None)
@@ -136,10 +130,6 @@ class CaptureLogger:
             "invalid_pair_rate": rate(len(pair_rows) - len(valid), len(pair_rows)),
             "ambiguous_pair_rate": rate(sum(row["pair_status"] == "ambiguous" for row in valid), len(valid)),
             "switch_count": len(switched),
-            "rollback_count": sum(row.get("switch_event") == "rolled_back" for row in initial),
-            "confirmation_pending_count": sum(
-                row.get("switch_event") == "confirmation_pending" for row in initial
-            ),
             "switch_precision": rate(sum(delta < 0 for delta in comparisons), len(comparisons)),
             "harmful_switch_rate": rate(sum(delta > 0 for delta in comparisons), len(comparisons)),
             "parameter_occupancy": json.dumps(Counter(row["cell_id"] for row in initial), sort_keys=True),

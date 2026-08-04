@@ -9,8 +9,8 @@ from hardware.utils import CELL_BY_ID, ContextKey, QScore, SensorCell
 
 from .config import PolicyConfig, SafetyPolicy
 from . import local_search
-from .state import ContextState, LocalEdgeState, StateStore
-from .types import PairMode, PairStatus, PairwiseDecision, SearchDirection, SwitchEvent
+from .state import LocalEdgeState, StateStore
+from .types import PairStatus, PairwiseDecision, SearchDirection
 
 
 class PairwisePolicy:
@@ -33,27 +33,9 @@ class PairwisePolicy:
             raise RuntimeError(f"Committed cell {state.active_cell_id} is unsafe for {context.table_key}.")
         return CELL_BY_ID[state.active_cell_id]
 
-    def pair_mode(self, context: ContextKey) -> PairMode:
-        state = self.state(context)
-        if state.rollback_verification_pending and not state.post_switch_dwell_remaining:
-            return PairMode.ROLLBACK_VERIFICATION
-        if state.pending_switch_to_id:
-            return PairMode.SWITCH_CONFIRMATION
-        return PairMode.NORMAL_SEARCH
-
     def select_challenger(self, context: ContextKey, current: SensorCell) -> SensorCell | None:
-        state = self.state(context)
-        mode = self.pair_mode(context)
-        if mode is PairMode.ROLLBACK_VERIFICATION:
-            challenger = CELL_BY_ID[state.rollback_cell_id]
-            edge = state.local_edges.get((current.cell_id, challenger.cell_id))
-            return None if edge and (edge.invalid_cooldown or edge.ambiguous_cooldown) else challenger
-        if mode is PairMode.SWITCH_CONFIRMATION:
-            challenger = CELL_BY_ID[state.pending_switch_to_id]
-            edge = state.local_edges.get((current.cell_id, challenger.cell_id))
-            return None if edge and (edge.invalid_cooldown or edge.ambiguous_cooldown) else challenger
         return local_search.select_challenger(
-            state, current, self.safety.safe_cells(context), self.config.initial_search_axis
+            self.state(context), current, self.safety.safe_cells(context), self.config.initial_search_axis
         )
 
     def resolve(
@@ -64,11 +46,8 @@ class PairwisePolicy:
         challenger: SensorCell,
         challenger_score: QScore,
         round_index: int,
-        pair_mode: PairMode = PairMode.NORMAL_SEARCH,
     ) -> PairwiseDecision:
         state = self.state(context)
-        if pair_mode is PairMode.NORMAL_SEARCH:
-            pair_mode = self.pair_mode(context)
         current_mu, current_std = self._values(current_score)
         challenger_mu, challenger_std = self._values(challenger_score)
         delta_mu = current_mu - challenger_mu
@@ -90,78 +69,34 @@ class PairwisePolicy:
         state.consecutive_invalid_pairs = 0
         state.rounds_since_valid_probe = 0
 
-        if pair_mode is PairMode.ROLLBACK_VERIFICATION:
-            return self._resolve_rollback(
-                state, current, challenger, status, delta_mu, pair_std, margin, edge
-            )
-
-        if pair_mode is PairMode.SWITCH_CONFIRMATION:
-            state.search_axis = state.pending_switch_axis
-            state.search_direction = state.pending_switch_direction
         direction = state.search_direction
         if direction is None:
             raise RuntimeError("Pair resolved without a search direction.")
         if status is PairStatus.CHALLENGER_WON:
-            same_edge = (
-                state.pending_switch_from_id == current.cell_id
-                and state.pending_switch_to_id == challenger.cell_id
+            state.active_cell_id = challenger.cell_id
+            state.cycle_had_switch = True
+            local_search.reset_axis(state, state.search_axis)
+            state.search_direction = direction
+            local_search.mark_direction_tested(
+                state,
+                SearchDirection.POSITIVE if direction is SearchDirection.NEGATIVE else SearchDirection.NEGATIVE,
             )
-            if not same_edge:
-                state.clear_pending_switch()
-                state.pending_switch_from_id = current.cell_id
-                state.pending_switch_to_id = challenger.cell_id
-                state.pending_switch_started_round = round_index
-                state.pending_switch_axis = state.search_axis
-                state.pending_switch_direction = direction
-            state.pending_switch_wins += 1
-            if state.pending_switch_wins >= self.config.switch_confirmations:
-                state.active_cell_id = challenger.cell_id
-                state.cycle_had_switch = True
-                local_search.reset_axis(state, state.search_axis)
-                state.search_direction = direction
-                local_search.mark_direction_tested(
-                    state,
-                    SearchDirection.POSITIVE if direction is SearchDirection.NEGATIVE else SearchDirection.NEGATIVE,
-                )
-                state.clear_pending_switch()
-                state.rollback_cell_id = current.cell_id
-                state.rollback_verification_pending = True
-                state.post_switch_dwell_remaining = self.config.post_switch_dwell_rounds
-                event = SwitchEvent.COMMITTED
-                selected = challenger
-            else:
-                event = SwitchEvent.CONFIRMATION_PENDING
-                selected = current
         elif status is PairStatus.CURRENT_WON:
-            state.clear_pending_switch()
             local_search.mark_direction_tested(state, direction)
             state.search_direction = None
-            event, selected = SwitchEvent.NONE, current
         else:
             edge.ambiguous_count += 1
             edge.ambiguous_cooldown = self.config.ambiguous_edge_cooldown_rounds
-            if pair_mode is PairMode.SWITCH_CONFIRMATION:
-                state.search_direction = state.pending_switch_direction
-            elif edge.ambiguous_count >= 2:
+            if edge.ambiguous_count >= 2:
                 local_search.mark_direction_tested(state, direction)
-                state.search_direction = None
-            else:
-                state.search_direction = None
-            event, selected = SwitchEvent.NONE, current
+            state.search_direction = None
         state.probe_pending = True
-        return PairwiseDecision(status, selected, delta_mu, pair_std, margin, pair_mode, event)
+        return PairwiseDecision(status, CELL_BY_ID[state.active_cell_id], delta_mu, pair_std, margin)
 
     def record_invalid(
-        self,
-        context: ContextKey,
-        current: SensorCell,
-        challenger: SensorCell,
-        round_index: int,
-        pair_mode: PairMode = PairMode.NORMAL_SEARCH,
+        self, context: ContextKey, current: SensorCell, challenger: SensorCell, round_index: int
     ) -> LocalEdgeState:
         state = self.state(context)
-        if pair_mode is PairMode.NORMAL_SEARCH:
-            pair_mode = self.pair_mode(context)
         edge = state.local_edges.setdefault(
             (current.cell_id, challenger.cell_id), LocalEdgeState()
         )
@@ -170,10 +105,7 @@ class PairwisePolicy:
         edge.last_observed_round = round_index
         state.consecutive_invalid_pairs += 1
         state.rounds_since_valid_probe += 1
-        if pair_mode is PairMode.SWITCH_CONFIRMATION:
-            state.search_direction = state.pending_switch_direction
-        elif pair_mode is not PairMode.ROLLBACK_VERIFICATION:
-            state.search_direction = None
+        state.search_direction = None
         state.probe_pending = True
         if state.consecutive_invalid_pairs >= self.config.max_consecutive_invalid_pairs:
             state.force_current_only_rounds = self.config.recovery_current_only_rounds
@@ -192,78 +124,10 @@ class PairwisePolicy:
             or not state.search_cycle_complete
         )
 
-    def begin_round(self, context: ContextKey, round_index: int = 0) -> SwitchEvent:
-        state = self.state(context)
-        for edge in state.local_edges.values():
+    def begin_round(self, context: ContextKey) -> None:
+        for edge in self.state(context).local_edges.values():
             edge.invalid_cooldown = max(0, edge.invalid_cooldown - 1)
             edge.ambiguous_cooldown = max(0, edge.ambiguous_cooldown - 1)
-        if (
-            state.pending_switch_started_round is not None
-            and round_index - state.pending_switch_started_round
-            >= self.config.switch_confirmation_timeout_rounds
-        ):
-            edge = state.local_edges[
-                (state.pending_switch_from_id, state.pending_switch_to_id)
-            ]
-            edge.ambiguous_cooldown = self.config.ambiguous_edge_cooldown_rounds
-            state.clear_pending_switch()
-            state.search_direction = None
-            return SwitchEvent.CONFIRMATION_TIMEOUT
-        if state.rollback_verification_pending and not state.post_switch_dwell_remaining:
-            if state.rollback_verification_started_round is None:
-                state.rollback_verification_started_round = round_index
-            elif (
-                round_index - state.rollback_verification_started_round
-                >= self.config.rollback_verification_timeout_rounds
-            ):
-                state.clear_rollback()
-                state.probe_pending = True
-                return SwitchEvent.ROLLBACK_TIMEOUT
-        return SwitchEvent.NONE
-
-    def _resolve_rollback(
-        self,
-        state: ContextState,
-        current: SensorCell,
-        challenger: SensorCell,
-        status: PairStatus,
-        delta_mu: float,
-        pair_std: float,
-        margin: float,
-        edge: LocalEdgeState,
-    ) -> PairwiseDecision:
-        selected = current
-        if status is PairStatus.CHALLENGER_WON:
-            selected = challenger
-            direction = state.search_direction
-            state.active_cell_id = challenger.cell_id
-            original_edge = state.local_edges.setdefault(
-                (challenger.cell_id, current.cell_id), LocalEdgeState()
-            )
-            original_edge.ambiguous_cooldown = self.config.ambiguous_edge_cooldown_rounds
-            if direction is not None:
-                local_search.reset_axis(state, state.search_axis)
-                local_search.mark_direction_tested(state, direction)
-            state.clear_rollback()
-            event = SwitchEvent.ROLLED_BACK
-        elif status is PairStatus.CURRENT_WON:
-            state.clear_rollback()
-            event = SwitchEvent.ROLLBACK_VERIFIED
-        else:
-            edge.ambiguous_count += 1
-            edge.ambiguous_cooldown = self.config.ambiguous_edge_cooldown_rounds
-            state.clear_rollback()
-            event = SwitchEvent.ROLLBACK_INCONCLUSIVE
-        state.probe_pending = True
-        return PairwiseDecision(
-            status,
-            selected,
-            delta_mu,
-            pair_std,
-            margin,
-            PairMode.ROLLBACK_VERIFICATION,
-            event,
-        )
 
     def offload(self, context: ContextKey, cell: SensorCell, score: QScore, status: PairStatus) -> tuple[bool, float]:
         mu, std = self._values(score)

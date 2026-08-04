@@ -52,37 +52,23 @@ class Camera:
 class Predictor:
     device = "cpu"
 
-    def __init__(
-        self,
-        events,
-        provider=None,
-        batch_results=None,
-        single_mu=.05,
-        change_on_batch=1,
-    ):
+    def __init__(self, events, provider=None):
         self.events = events
         self.provider = provider
         self.single_calls = 0
         self.batch_sizes = []
-        self.batch_results = list(batch_results or [(.20, .10)])
-        self.single_mu = single_mu
-        self.change_on_batch = change_on_batch
 
     def predict(self, image, context, exposure_us, gain):
         self.events.append("predict_single")
         self.single_calls += 1
-        return score(self.single_mu)
+        return score(.05)
 
     def predict_batch(self, images, contexts, exposure_us_values, gains):
         self.events.append("predict_batch")
         self.batch_sizes.append(len(images))
-        if self.provider is not None and len(self.batch_sizes) == self.change_on_batch:
+        if self.provider is not None:
             self.provider.current = ContextKey(1, 0)
-        current_mu, challenger_mu = (
-            self.batch_results.pop(0) if len(self.batch_results) > 1
-            else self.batch_results[0]
-        )
-        return [score(current_mu, 2), score(challenger_mu, 2)]
+        return [score(.20, 2), score(.10, 2)]
 
 
 class Logger:
@@ -93,7 +79,6 @@ class Logger:
         row = {
             "round_index": frame.round_index,
             "capture_role": frame.role,
-            "cell_id": frame.cell.cell_id,
             "output_delivered": int(frame.role == "initial"),
             **values,
         }
@@ -131,22 +116,12 @@ def config(policy=None):
     )
 
 
-def experiment(
-    change_context_during_batch=False,
-    policy_config=None,
-    batch_results=None,
-    change_on_batch=1,
-):
+def experiment(change_context_during_batch=False):
     events = []
     provider = Provider()
-    cfg = config(policy_config)
+    cfg = config()
     policy = PairwisePolicy(cfg.policy, SafetyPolicy())
-    predictor = Predictor(
-        events,
-        provider if change_context_during_batch else None,
-        batch_results,
-        change_on_batch=change_on_batch,
-    )
+    predictor = Predictor(events, provider if change_context_during_batch else None)
     logger = Logger()
     runtime = CameraControlExperiment(
         cfg,
@@ -166,9 +141,9 @@ class ExperimentTest(unittest.TestCase):
         with redirect_stdout(output):
             runtime.run_round()
         line = output.getvalue()
-        self.assertIn("active=E16_G064 E=16ms G=64", line)
+        self.assertIn("active=E08_G064 E=8ms G=64", line)
         self.assertIn("search=exposure/negative", line)
-        self.assertIn("decision=challenger_won/confirmation_pending", line)
+        self.assertIn("decision=challenger_won flow=pairwise", line)
         self.assertNotIn("abs_rel", line.lower())
         self.assertNotIn("absrel", line.lower())
         self.assertNotIn("a1=", line.lower())
@@ -211,8 +186,7 @@ class ExperimentTest(unittest.TestCase):
         result = runtime.run_round()
         old_state = policy.state(ContextKey(0, 0))
         self.assertEqual(result.decision.status.value, "challenger_won")
-        self.assertEqual(old_state.active_cell_id, SensorCell(16, 64).cell_id)
-        self.assertEqual(old_state.pending_switch_to_id, SensorCell(8, 64).cell_id)
+        self.assertEqual(old_state.active_cell_id, SensorCell(8, 64).cell_id)
         self.assertEqual(len(old_state.local_edges), 1)
 
     def test_old_context_winner_is_not_left_applied_in_new_context(self) -> None:
@@ -222,46 +196,12 @@ class ExperimentTest(unittest.TestCase):
         self.assertEqual(policy.state(ContextKey(1, 0)).active_cell_id, SensorCell(16, 64).cell_id)
         self.assertEqual(events[-1], "apply:E16_G064")
 
-    def test_confirmation_pending_restores_current_cell_physically(self) -> None:
-        runtime, events, _, _, policy, logger = experiment()
-        runtime.run_round()
-        self.assertEqual(policy.state(ContextKey(0, 0)).active_cell_id, "E16_G064")
-        self.assertEqual(runtime.last_applied_cell, SensorCell(16, 64))
-        self.assertEqual(events[-1], "apply:E16_G064")
-        self.assertEqual(logger.rows[0]["pair_status"], "challenger_won")
-        self.assertEqual(logger.rows[0]["switch_event"], "confirmation_pending")
-        self.assertEqual(logger.rows[0]["active_cell_after"], "E16_G064")
-        self.assertEqual(logger.rows[0]["committed_switch"], 0)
-
-    def test_old_context_confirmation_commits_only_old_state(self) -> None:
-        runtime, events, _, _, policy, _ = experiment(
-            change_context_during_batch=True, change_on_batch=2
-        )
-        runtime.run_round()
-        runtime.run_round()
-        self.assertEqual(policy.state(ContextKey(0, 0)).active_cell_id, "E08_G064")
-        self.assertEqual(policy.state(ContextKey(1, 0)).active_cell_id, "E16_G064")
-        self.assertEqual(runtime.last_applied_cell, SensorCell(16, 64))
-        self.assertEqual(events[-1], "apply:E16_G064")
-
-    def test_old_context_rollback_updates_old_state_but_applies_new_context(self) -> None:
-        runtime, events, _, _, policy, _ = experiment(
-            change_context_during_batch=True, change_on_batch=3
-        )
-        policy.committed_cell(ContextKey(1, 0), SensorCell(32, 64))
-        for _ in range(5):
-            runtime.run_round()
-        self.assertEqual(policy.state(ContextKey(0, 0)).active_cell_id, "E16_G064")
-        self.assertEqual(runtime.last_applied_cell, SensorCell(32, 64))
-        self.assertEqual(events[-1], "apply:E32_G064")
-
     def test_challenger_is_excluded_from_primary_metric(self) -> None:
         logger = CaptureLogger.__new__(CaptureLogger)
         logger.rows = [
             {
                 "round_index": 0, "capture_role": "initial", "output_delivered": 1,
                 "pair_status": "challenger_won", "capture_valid_pair": 1,
-                "switch_event": "committed",
                 "abs_rel": .20, "a1": .7, "cell_id": "E16_G064",
                 "control_decision_delay_ms": 1, "pair_capture_gap_ms": 5,
                 "timestamp_ns": 1,
@@ -269,7 +209,6 @@ class ExperimentTest(unittest.TestCase):
             {
                 "round_index": 0, "capture_role": "challenger", "output_delivered": 0,
                 "pair_status": "challenger_won", "capture_valid_pair": 1,
-                "switch_event": "committed",
                 "abs_rel": .01, "a1": .99, "cell_id": "E08_G064",
                 "control_decision_delay_ms": 1, "pair_capture_gap_ms": 5,
                 "timestamp_ns": 2,
@@ -279,94 +218,6 @@ class ExperimentTest(unittest.TestCase):
         self.assertEqual(summary["abs_rel"], .20)
         self.assertEqual(summary["a1"], .7)
         self.assertEqual(summary["output_coverage"], 1.0)
-
-    def committed_runtime(self):
-        runtime, events, provider, predictor, policy, logger = experiment()
-        runtime.run_round()
-        runtime.run_round()
-        self.assertEqual(policy.state(ContextKey(0, 0)).active_cell_id, "E08_G064")
-        return runtime, events, provider, predictor, policy, logger
-
-    def test_confirmed_switch_is_logged_as_one_commit(self) -> None:
-        _, _, _, _, _, logger = self.committed_runtime()
-        committed = [
-            row for row in logger.rows
-            if row["capture_role"] == "initial" and row["switch_event"] == "committed"
-        ]
-        self.assertEqual(len(committed), 1)
-        self.assertEqual(committed[0]["active_cell_after"], "E08_G064")
-        self.assertEqual(committed[0]["committed_switch"], 1)
-
-    def test_exact_post_switch_dwell_rounds_are_current_only(self) -> None:
-        runtime, _, _, predictor, _, _ = self.committed_runtime()
-        runtime.run_round()
-        runtime.run_round()
-        self.assertEqual(predictor.single_calls, 2)
-        self.assertEqual(predictor.batch_sizes, [2, 2])
-        runtime.run_round()
-        self.assertEqual(predictor.batch_sizes, [2, 2, 2])
-
-    def test_no_challenger_capture_during_dwell(self) -> None:
-        runtime, events, _, _, _, _ = self.committed_runtime()
-        events.clear()
-        runtime.run_round()
-        runtime.run_round()
-        self.assertEqual(events.count("capture"), 2)
-        self.assertNotIn("predict_batch", events)
-
-    def test_reverse_pair_uses_new_current_and_old_challenger(self) -> None:
-        runtime, _, _, _, _, logger = self.committed_runtime()
-        runtime.run_round()
-        runtime.run_round()
-        runtime.run_round()
-        self.assertEqual(
-            [row["cell_id"] for row in logger.rows[-2:]],
-            ["E08_G064", "E16_G064"],
-        )
-        self.assertEqual(logger.rows[-2]["pair_mode"], "rollback_verification")
-        self.assertEqual(logger.rows[-2]["switch_event"], "rolled_back")
-        self.assertEqual(logger.rows[-2]["rollback_applied"], 1)
-
-    def test_current_only_mu_never_rolls_back(self) -> None:
-        runtime, _, _, predictor, policy, _ = self.committed_runtime()
-        predictor.single_mu = 1.0
-        runtime.run_round()
-        state = policy.state(ContextKey(0, 0))
-        self.assertEqual(state.active_cell_id, "E08_G064")
-        self.assertTrue(state.rollback_verification_pending)
-
-    def test_summary_counts_only_physical_switch_events(self) -> None:
-        logger = CaptureLogger.__new__(CaptureLogger)
-        logger.rows = []
-        for round_index, event, initial_error, probe_error in (
-            (0, "confirmation_pending", .20, .01),
-            (1, "committed", .20, .30),
-            (4, "rolled_back", .20, .10),
-        ):
-            for role, delivered, error in (
-                ("initial", 1, initial_error),
-                ("challenger", 0, probe_error),
-            ):
-                logger.rows.append({
-                    "round_index": round_index,
-                    "capture_role": role,
-                    "output_delivered": delivered,
-                    "pair_status": "challenger_won",
-                    "capture_valid_pair": 1,
-                    "switch_event": event,
-                    "abs_rel": error,
-                    "a1": .8,
-                    "cell_id": "E16_G064",
-                    "control_decision_delay_ms": 1,
-                    "pair_capture_gap_ms": 5,
-                    "timestamp_ns": round_index + delivered,
-                })
-        summary = logger._summary()
-        self.assertEqual(summary["confirmation_pending_count"], 1)
-        self.assertEqual(summary["switch_count"], 1)
-        self.assertEqual(summary["rollback_count"], 1)
-        self.assertEqual(summary["switch_precision"], 0.0)
-        self.assertEqual(summary["harmful_switch_rate"], 1.0)
 
 
 if __name__ == "__main__":

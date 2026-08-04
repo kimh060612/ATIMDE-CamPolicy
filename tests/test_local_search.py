@@ -49,9 +49,6 @@ class LocalSearchTest(unittest.TestCase):
         self.assertFalse(state.exposure_positive_tested)
 
     def test_exposure_win_continues_in_same_direction(self) -> None:
-        self.policy = PairwisePolicy(
-            PolicyConfig(switch_confirmations=1), SafetyPolicy()
-        )
         current = SensorCell(16, 64)
         self.policy.committed_cell(self.context, current)
         challenger = self.policy.select_challenger(self.context, current)

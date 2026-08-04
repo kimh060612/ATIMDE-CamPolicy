@@ -75,10 +75,6 @@ class PolicyConfig:
     max_consecutive_invalid_pairs: int = 3
     recovery_current_only_rounds: int = 2
     periodic_reprobe_interval: int = 30
-    switch_confirmations: int = 2
-    switch_confirmation_timeout_rounds: int = 8
-    post_switch_dwell_rounds: int = 2
-    rollback_verification_timeout_rounds: int = 8
     initial_search_axis: SearchAxis = SearchAxis.EXPOSURE
     offload_uncertainty_weight: float = 1.0
     offload_threshold: float = 0.15
@@ -94,13 +90,8 @@ class PolicyConfig:
             self.max_consecutive_invalid_pairs,
             self.recovery_current_only_rounds,
             self.periodic_reprobe_interval,
-            self.switch_confirmations,
-            self.switch_confirmation_timeout_rounds,
-            self.rollback_verification_timeout_rounds,
         ) < 1:
             raise ValueError("Cooldown, recovery, and periodic counts must be positive.")
-        if self.post_switch_dwell_rounds < 0:
-            raise ValueError("Post-switch dwell rounds must be non-negative.")
         values = (
             self.probe_trigger_threshold,
             self.switch_margin,
@@ -155,10 +146,6 @@ class ExperimentConfig:
                 max_consecutive_invalid_pairs=args.max_consecutive_invalid_pairs,
                 recovery_current_only_rounds=args.recovery_current_only_rounds,
                 periodic_reprobe_interval=args.periodic_reprobe_interval,
-                switch_confirmations=args.switch_confirmations,
-                switch_confirmation_timeout_rounds=args.switch_confirmation_timeout_rounds,
-                post_switch_dwell_rounds=args.post_switch_dwell_rounds,
-                rollback_verification_timeout_rounds=args.rollback_verification_timeout_rounds,
                 initial_search_axis=SearchAxis(args.initial_search_axis),
                 offload_uncertainty_weight=args.offload_uncertainty_weight,
                 offload_threshold=args.offload_threshold,
@@ -196,10 +183,6 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-consecutive-invalid-pairs", type=int, default=3)
     parser.add_argument("--recovery-current-only-rounds", type=int, default=2)
     parser.add_argument("--periodic-reprobe-interval", type=int, default=30)
-    parser.add_argument("--switch-confirmations", type=int, default=2)
-    parser.add_argument("--switch-confirmation-timeout-rounds", type=int, default=8)
-    parser.add_argument("--post-switch-dwell-rounds", type=int, default=2)
-    parser.add_argument("--rollback-verification-timeout-rounds", type=int, default=8)
     parser.add_argument("--initial-search-axis", choices=("exposure", "gain"), default="exposure")
     parser.add_argument("--offload-uncertainty-weight", type=float, default=1.0)
     parser.add_argument("--offload-threshold", type=float, default=0.15)
@@ -240,8 +223,6 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         "invalid_edge_cooldown_rounds", "ambiguous_edge_cooldown_rounds",
         "max_consecutive_invalid_pairs", "recovery_current_only_rounds",
         "periodic_reprobe_interval", "context_debounce_samples", "min_valid_depth_pixels",
-        "switch_confirmations", "switch_confirmation_timeout_rounds",
-        "rollback_verification_timeout_rounds",
     )
     if any(getattr(args, name) < 1 for name in positive):
         parser.error("Cooldown, recovery, periodic, debounce, and pixel counts must be positive.")
@@ -249,8 +230,6 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         parser.error("--max-rounds must be between 1 and 400.")
     if args.round_interval_ms < 0 or args.context_debounce_ms < 0:
         parser.error("Round interval and context debounce must be non-negative.")
-    if args.post_switch_dwell_rounds < 0:
-        parser.error("--post-switch-dwell-rounds must be non-negative.")
     if not 0 < args.min_depth_m < args.max_depth_m:
         parser.error("Require 0 < --min-depth-m < --max-depth-m.")
     if not math.isfinite(args.max_pair_capture_gap_ms) or args.max_pair_capture_gap_ms <= 0:

@@ -27,23 +27,6 @@ class PairStatus(str, Enum):
     NOT_PROBED = "not_probed"
 
 
-class PairMode(str, Enum):
-    NORMAL_SEARCH = "normal_search"
-    SWITCH_CONFIRMATION = "switch_confirmation"
-    ROLLBACK_VERIFICATION = "rollback_verification"
-
-
-class SwitchEvent(str, Enum):
-    NONE = "none"
-    CONFIRMATION_PENDING = "confirmation_pending"
-    COMMITTED = "committed"
-    ROLLBACK_VERIFIED = "rollback_verified"
-    ROLLBACK_INCONCLUSIVE = "rollback_inconclusive"
-    ROLLED_BACK = "rolled_back"
-    CONFIRMATION_TIMEOUT = "confirmation_timeout"
-    ROLLBACK_TIMEOUT = "rollback_timeout"
-
-
 @dataclass(frozen=True)
 class CapturedFrame:
     round_index: int
@@ -80,8 +63,6 @@ class PairwiseDecision:
     delta_mu: float
     pair_std: float
     effective_margin: float
-    pair_mode: PairMode = PairMode.NORMAL_SEARCH
-    switch_event: SwitchEvent = SwitchEvent.NONE
 
 
 @dataclass(frozen=True)
