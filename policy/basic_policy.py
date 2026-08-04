@@ -17,6 +17,7 @@ from hardware.utils import (
     MOTION_STATE_COUNT,
     ContextKey,
     ContextState,
+    EdgeStats,
     QScore,
     SensorCell,
 )
@@ -133,6 +134,27 @@ class PolicyDecision:
     score: QScore
 
 
+PairStatus = Literal[
+    "challenger_won",
+    "current_won",
+    "ambiguous",
+    "invalid_pair",
+    "not_probed",
+]
+
+
+@dataclass(frozen=True)
+class PairwiseResult:
+    selected_cell: SensorCell
+    status: PairStatus
+    delta_mu: float
+    pair_std: float
+    effective_margin: float
+    confidence: float
+    edge_ema_before: float
+    edge_ema_after: float
+
+
 class ATIMDECameraProbingController:
     """Context-specific active cell with one same-round pairwise-mu challenger."""
 
@@ -142,24 +164,54 @@ class ATIMDECameraProbingController:
         *,
         probe_trigger_threshold: float = 0.11,
         switch_margin: float = 0.01,
-        mu_ema_alpha: float = 0.3,
         challenger_cooldown_rounds: int = 5,
+        pair_uncertainty_weight: float = 0.25,
+        reference_pair_std: float = 0.03,
+        edge_ema_alpha: float = 0.3,
+        offload_uncertainty_weight: float = 1.0,
+        offload_threshold: float = 0.15,
+        ambiguous_offload_threshold: float = 0.11,
         offload_command: Optional[str] = None,
     ) -> None:
         if not math.isfinite(probe_trigger_threshold):
             raise ValueError("probe_trigger_threshold must be finite.")
         if not math.isfinite(switch_margin) or switch_margin < 0.0:
             raise ValueError("switch_margin must be finite and non-negative.")
-        if not 0.0 < mu_ema_alpha <= 1.0:
-            raise ValueError("mu_ema_alpha must be in (0, 1].")
         if challenger_cooldown_rounds < 0:
             raise ValueError("challenger_cooldown_rounds must be non-negative.")
+        if (
+            not math.isfinite(pair_uncertainty_weight)
+            or pair_uncertainty_weight < 0.0
+        ):
+            raise ValueError(
+                "pair_uncertainty_weight must be finite and non-negative."
+            )
+        if not math.isfinite(reference_pair_std) or reference_pair_std <= 0.0:
+            raise ValueError("reference_pair_std must be finite and positive.")
+        if not 0.0 < edge_ema_alpha <= 1.0:
+            raise ValueError("edge_ema_alpha must be in (0, 1].")
+        if (
+            not math.isfinite(offload_uncertainty_weight)
+            or offload_uncertainty_weight < 0.0
+        ):
+            raise ValueError(
+                "offload_uncertainty_weight must be finite and non-negative."
+            )
+        if not math.isfinite(offload_threshold):
+            raise ValueError("offload_threshold must be finite.")
+        if not math.isfinite(ambiguous_offload_threshold):
+            raise ValueError("ambiguous_offload_threshold must be finite.")
 
         self.safety_policy = safety_policy
         self.probe_trigger_threshold = probe_trigger_threshold
         self.switch_margin = switch_margin
-        self.mu_ema_alpha = mu_ema_alpha
         self.challenger_cooldown_rounds = challenger_cooldown_rounds
+        self.pair_uncertainty_weight = pair_uncertainty_weight
+        self.reference_pair_std = reference_pair_std
+        self.edge_ema_alpha = edge_ema_alpha
+        self.offload_uncertainty_weight = offload_uncertainty_weight
+        self.offload_threshold = offload_threshold
+        self.ambiguous_offload_threshold = ambiguous_offload_threshold
         self.offload_command = offload_command
         self.context_states: dict[str, ContextState] = {}
 
@@ -168,6 +220,12 @@ class ATIMDECameraProbingController:
         if not math.isfinite(mu):
             raise ValueError("Observed mu must be finite.")
         return float(mu)
+
+    @staticmethod
+    def _finite_std(std: float) -> float:
+        if not math.isfinite(std) or std < 0.0:
+            raise ValueError("Observed std must be finite and non-negative.")
+        return float(std)
 
     def _state_for(self, context: ContextKey) -> ContextState:
         context.validate()
@@ -200,24 +258,6 @@ class ATIMDECameraProbingController:
             return CELL_BY_ID[state.active_cell_id]
         return fallback if fallback in safe_cells else safe_cells[0]
 
-    def observe(
-        self,
-        context: ContextKey,
-        cell: SensorCell,
-        observed_mu: float,
-        *,
-        round_index: int,
-    ) -> None:
-        if cell not in self.safety_policy.safe_cells(context):
-            raise ValueError(
-                f"Cannot observe unsafe cell {cell.cell_id} for {context.table_key}."
-            )
-        self._state_for(context).cells[cell.cell_id].update(
-            self._finite_mu(observed_mu),
-            alpha=self.mu_ema_alpha,
-            round_index=round_index,
-        )
-
     def record_current_result(
         self,
         context: ContextKey,
@@ -243,7 +283,9 @@ class ATIMDECameraProbingController:
         unobserved = [
             cell
             for cell in candidates
-            if state.cells[cell.cell_id].observation_count == 0
+            if state.edges.get(
+                (current.cell_id, cell.cell_id), EdgeStats()
+            ).comparison_count == 0
         ]
         if unobserved:
             return min(
@@ -253,7 +295,7 @@ class ATIMDECameraProbingController:
         return min(
             candidates,
             key=lambda cell: (
-                state.cells[cell.cell_id].ema_mu,
+                -state.edges[(current.cell_id, cell.cell_id)].ema_improvement,
                 GRID_DIVERSE_RANK[cell.cell_id],
             ),
         )
@@ -263,19 +305,77 @@ class ATIMDECameraProbingController:
         context: ContextKey,
         current: SensorCell,
         current_mu: float,
+        current_std: float,
         challenger: SensorCell,
         challenger_mu: float,
-    ) -> SensorCell:
+        challenger_std: float,
+    ) -> PairwiseResult:
         state = self._state_for(context)
         if state.active_cell_id != current.cell_id:
             raise RuntimeError("Current cell is not the committed context cell.")
         current_mu = self._finite_mu(current_mu)
         challenger_mu = self._finite_mu(challenger_mu)
-        if challenger_mu + self.switch_margin < current_mu:
+        current_std = self._finite_std(current_std)
+        challenger_std = self._finite_std(challenger_std)
+        delta_mu = current_mu - challenger_mu
+        pair_std = math.hypot(current_std, challenger_std)
+        effective_margin = (
+            self.switch_margin + self.pair_uncertainty_weight * pair_std
+        )
+        if delta_mu > effective_margin:
+            status: PairStatus = "challenger_won"
+        elif delta_mu < -effective_margin:
+            status = "current_won"
+        else:
+            status = "ambiguous"
+
+        confidence = 1.0 / (1.0 + pair_std / self.reference_pair_std)
+        edge = state.edges.setdefault(
+            (current.cell_id, challenger.cell_id), EdgeStats()
+        )
+        edge_ema_before = edge.ema_improvement
+        effective_alpha = self.edge_ema_alpha * confidence
+        edge.ema_improvement = (
+            (1.0 - effective_alpha) * edge.ema_improvement
+            + effective_alpha * delta_mu
+        )
+        edge.comparison_count += 1
+        edge.ambiguous_count += int(status == "ambiguous")
+        edge.challenger_win_count += int(status == "challenger_won")
+
+        selected = current
+        if status == "challenger_won":
             state.active_cell_id = challenger.cell_id
-            return challenger
-        state.cells[challenger.cell_id].cooldown = self.challenger_cooldown_rounds
-        return current
+            selected = challenger
+        elif status == "current_won":
+            state.cells[challenger.cell_id].cooldown = (
+                self.challenger_cooldown_rounds
+            )
+        return PairwiseResult(
+            selected,
+            status,
+            delta_mu,
+            pair_std,
+            effective_margin,
+            confidence,
+            edge_ema_before,
+            edge.ema_improvement,
+        )
+
+    def evaluate_offload(
+        self,
+        selected_mu: float,
+        selected_std: float,
+        pair_status: PairStatus,
+    ) -> tuple[bool, float]:
+        selected_mu = self._finite_mu(selected_mu)
+        selected_std = self._finite_std(selected_std)
+        risk = selected_mu + self.offload_uncertainty_weight * selected_std
+        should_offload = risk > self.offload_threshold or (
+            pair_status == "ambiguous"
+            and selected_mu > self.ambiguous_offload_threshold
+        )
+        return should_offload, risk
 
     def complete_round(self, context: ContextKey) -> None:
         for stats in self._state_for(context).cells.values():
@@ -284,9 +384,6 @@ class ATIMDECameraProbingController:
     def active_cell_id(self, context: ContextKey) -> Optional[str]:
         state = self.context_states.get(context.table_key)
         return state.active_cell_id if state is not None else None
-
-    def ema_mu(self, context: ContextKey, cell: SensorCell) -> Optional[float]:
-        return self._state_for(context).cells[cell.cell_id].ema_mu
 
     def challenger_cooldown(self, context: ContextKey, cell: SensorCell) -> int:
         return self._state_for(context).cells[cell.cell_id].cooldown

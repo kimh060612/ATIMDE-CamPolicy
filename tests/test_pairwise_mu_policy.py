@@ -6,7 +6,7 @@ from unittest import mock
 
 import numpy as np
 
-from hardware.utils import ALL_CELLS, CELL_BY_ID, ContextKey, QScore
+from hardware.utils import ALL_CELLS, CELL_BY_ID, ContextKey, EdgeStats, QScore
 from orbbec_deterministic_probing_modelv1 import ModelV1Experiment
 from policy.basic_policy import ATIMDECameraProbingController, SafetyPolicy
 
@@ -40,8 +40,13 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         arguments = {
             "probe_trigger_threshold": 0.11,
             "switch_margin": 0.01,
-            "mu_ema_alpha": 0.3,
             "challenger_cooldown_rounds": 5,
+            "pair_uncertainty_weight": 0.25,
+            "reference_pair_std": 0.03,
+            "edge_ema_alpha": 0.3,
+            "offload_uncertainty_weight": 1.0,
+            "offload_threshold": 0.15,
+            "ambiguous_offload_threshold": 0.11,
         }
         arguments.update(overrides)
         return ATIMDECameraProbingController(SafetyPolicy(), **arguments)
@@ -63,7 +68,10 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         experiment.default_cell = CELL_BY_ID["E04_G016"]
         experiment.last_applied_cell = last_applied_cell or experiment.default_cell
         experiment.camera = SimpleNamespace(exposure_value_per_ms=1000.0)
-        experiment.predictor = SimpleNamespace(predict=mock.Mock())
+        experiment.predictor = SimpleNamespace(
+            predict=mock.Mock(),
+            predict_batch=mock.Mock(),
+        )
         experiment.executor = SimpleNamespace(submit=lambda *args, **kwargs: object())
         experiment.round_index = 0
         captures: list[tuple[str, str, bool]] = []
@@ -71,6 +79,7 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         applied: list[str] = []
         pending_initial = list(initial_scores)
         pending_challengers = list(challenger_scores or [])
+        last_initial: list[QScore] = []
 
         def capture(cell, context, role, *, apply_cell=True):
             captures.append((role, cell.cell_id, apply_cell))
@@ -102,11 +111,23 @@ class PairwiseMuPolicyTest(unittest.TestCase):
                 else pending_challengers
             )
             observation = scores.pop(0)
+            if row["capture_role"] == "initial":
+                last_initial[:] = [observation]
             row.update(
                 q=observation.q,
                 std=observation.uncertainty,
                 camera_bias=observation.mu,
             )
+
+        def await_pair_result(pair_rows, future):
+            observations = [last_initial[0], pending_challengers.pop(0)]
+            for row, observation in zip(pair_rows, observations):
+                row.update(
+                    q=observation.q,
+                    std=observation.uncertainty,
+                    camera_bias=observation.mu,
+                    mde_batch_size=2,
+                )
 
         def apply_control(cell, *, reason):
             experiment.last_applied_cell = cell
@@ -115,6 +136,7 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         experiment._capture = capture
         experiment._save_capture = mock.Mock()
         experiment._await_probe_result = await_result
+        experiment._await_pair_result = await_pair_result
         experiment._probe_fits_budget = mock.Mock(return_value=True)
         experiment._finish_decision = mock.Mock()
         experiment._apply_control_cell = apply_control
@@ -127,7 +149,7 @@ class PairwiseMuPolicyTest(unittest.TestCase):
             for _ in range(rounds):
                 experiment.run_round()
 
-    def test_transition_frame_never_updates_active_cell_or_ema(self) -> None:
+    def test_transition_frame_never_updates_active_cell_or_edges(self) -> None:
         controller = self.controller()
         active = CELL_BY_ID["E04_G016"]
         held = CELL_BY_ID["E16_G064"]
@@ -146,9 +168,7 @@ class PairwiseMuPolicyTest(unittest.TestCase):
 
         state = controller.context_states[self.context.table_key]
         self.assertEqual(state.active_cell_id, active.cell_id)
-        self.assertTrue(
-            all(cell.observation_count == 0 for cell in state.cells.values())
-        )
+        self.assertEqual(state.edges, {})
         self.assertEqual(state.cells[ALL_CELLS[-1].cell_id].cooldown, 3)
         self.assertEqual(rows[0]["selection_source"], "transition_hold")
         self.assertEqual(rows[0]["transition_only"], 1)
@@ -181,59 +201,156 @@ class PairwiseMuPolicyTest(unittest.TestCase):
 
         self.assertEqual(controller.active_cell_id(self.context), active.cell_id)
 
-    def test_rejected_challenger_cannot_become_active(self) -> None:
+    def test_clearly_losing_challenger_stays_inactive_and_enters_cooldown(
+        self,
+    ) -> None:
         controller = self.controller(switch_margin=0.01)
         current, challenger = ALL_CELLS[:2]
         controller.cell_for_context(self.context, current)
 
-        selected = controller.resolve_challenger(
-            self.context, current, 0.30, challenger, 0.295
+        pair = controller.resolve_challenger(
+            self.context, current, 0.30, 0.01, challenger, 0.34, 0.01
         )
 
-        self.assertEqual(selected, current)
+        self.assertEqual(pair.status, "current_won")
+        self.assertEqual(pair.selected_cell, current)
         self.assertEqual(controller.active_cell_id(self.context), current.cell_id)
         self.assertEqual(controller.challenger_cooldown(self.context, challenger), 5)
 
-    def test_challenger_switches_only_when_raw_mu_wins_by_margin(self) -> None:
+    def test_challenger_switches_only_above_effective_margin(self) -> None:
         controller = self.controller(switch_margin=0.01)
         current, challenger = ALL_CELLS[:2]
         controller.cell_for_context(self.context, current)
 
-        selected = controller.resolve_challenger(
-            self.context, current, 0.30, challenger, 0.28
+        pair = controller.resolve_challenger(
+            self.context, current, 0.30, 0.01, challenger, 0.28, 0.01
         )
 
-        self.assertEqual(selected, challenger)
+        self.assertGreater(pair.delta_mu, pair.effective_margin)
+        self.assertEqual(pair.status, "challenger_won")
+        self.assertEqual(pair.selected_cell, challenger)
         self.assertEqual(controller.active_cell_id(self.context), challenger.cell_id)
+        edge = controller.context_states[self.context.table_key].edges[
+            (current.cell_id, challenger.cell_id)
+        ]
+        self.assertEqual(edge.challenger_win_count, 1)
 
-    def test_std_q_and_absolute_probability_do_not_affect_switching(self) -> None:
+    def test_large_std_increases_margin_and_prevents_switch(self) -> None:
         controller = self.controller(switch_margin=0.01)
         current, challenger = ALL_CELLS[:2]
         controller.cell_for_context(self.context, current)
-        experiment, _, _, _ = self.runtime(
+
+        pair = controller.resolve_challenger(
+            self.context, current, 0.30, 0.20, challenger, 0.27, 0.20
+        )
+
+        self.assertEqual(pair.status, "ambiguous")
+        self.assertGreater(pair.effective_margin, pair.delta_mu)
+        self.assertEqual(controller.active_cell_id(self.context), current.cell_id)
+
+    def test_q_is_not_used_for_cell_ranking_or_pair_resolution(self) -> None:
+        controller = self.controller()
+        current = ALL_CELLS[0]
+        controller.cell_for_context(self.context, current)
+        experiment, _, rows, _ = self.runtime(
             controller,
-            initial_scores=[score(0.30, std=0.50, q=99.0)],
-            challenger_scores=[score(0.295, std=0.0001, q=-99.0)],
+            initial_scores=[score(0.30, std=0.01, q=-999.0)],
+            challenger_scores=[score(0.20, std=0.01, q=999.0)],
         )
 
         self.run_runtime(experiment)
 
-        self.assertEqual(controller.active_cell_id(self.context), current.cell_id)
-        self.assertFalse(hasattr(controller, "probability_good"))
+        self.assertEqual(controller.active_cell_id(self.context), rows[1]["cell_id"])
 
-    def test_contexts_keep_independent_active_cells_and_ema_tables(self) -> None:
-        controller = self.controller(mu_ema_alpha=1.0)
+    def test_ambiguous_pair_keeps_current_without_cooldown(self) -> None:
+        controller = self.controller()
+        current, challenger = ALL_CELLS[:2]
+        controller.cell_for_context(self.context, current)
+
+        pair = controller.resolve_challenger(
+            self.context, current, 0.30, 0.01, challenger, 0.295, 0.01
+        )
+
+        self.assertEqual(pair.status, "ambiguous")
+        self.assertEqual(pair.selected_cell, current)
+        self.assertEqual(controller.challenger_cooldown(self.context, challenger), 0)
+        edge = controller.context_states[self.context.table_key].edges[
+            (current.cell_id, challenger.cell_id)
+        ]
+        self.assertEqual(edge.comparison_count, 1)
+        self.assertEqual(edge.ambiguous_count, 1)
+
+    def test_low_confidence_pair_has_smaller_edge_ema_update(self) -> None:
+        current, challenger = ALL_CELLS[:2]
+        high_confidence = self.controller()
+        low_confidence = self.controller()
+        high_confidence.cell_for_context(self.context, current)
+        low_confidence.cell_for_context(self.context, current)
+
+        high = high_confidence.resolve_challenger(
+            self.context, current, 0.30, 0.001, challenger, 0.20, 0.001
+        )
+        low = low_confidence.resolve_challenger(
+            self.context, current, 0.30, 0.10, challenger, 0.20, 0.10
+        )
+
+        self.assertGreater(high.confidence, low.confidence)
+        self.assertGreater(high.edge_ema_after, low.edge_ema_after)
+
+    def test_offload_uses_selected_frame_mu_and_std(self) -> None:
+        controller = self.controller(
+            pair_uncertainty_weight=0.0,
+            offload_threshold=0.15,
+        )
+        experiment, _, rows, _ = self.runtime(
+            controller,
+            initial_scores=[score(0.30, std=0.50)],
+            challenger_scores=[score(0.10, std=0.01)],
+        )
+
+        self.run_runtime(experiment)
+
+        self.assertEqual(rows[0]["pair_status"], "challenger_won")
+        self.assertAlmostEqual(rows[0]["selected_mu"], 0.10)
+        self.assertAlmostEqual(rows[0]["selected_std"], 0.01)
+        self.assertAlmostEqual(rows[0]["offload_risk"], 0.11)
+        controller.invoke_offload.assert_not_called()
+
+    def test_offload_does_not_change_committed_cell(self) -> None:
+        controller = self.controller(offload_threshold=0.20)
+        current = ALL_CELLS[0]
+        controller.cell_for_context(self.context, current)
+        experiment, _, rows, _ = self.runtime(
+            controller,
+            initial_scores=[score(0.30, std=0.05)],
+            challenger_scores=[score(0.295, std=0.05)],
+        )
+
+        self.run_runtime(experiment)
+
+        self.assertEqual(rows[0]["pair_status"], "ambiguous")
+        self.assertEqual(controller.active_cell_id(self.context), current.cell_id)
+        controller.invoke_offload.assert_called_once()
+
+    def test_contexts_keep_independent_active_cells_and_edge_tables(self) -> None:
+        controller = self.controller()
         other_context = ContextKey(1, 0)
-        first, second = ALL_CELLS[:2]
+        first, second, challenger = ALL_CELLS[:3]
         controller.cell_for_context(self.context, first)
         controller.cell_for_context(other_context, second)
-        controller.observe(self.context, first, 0.10, round_index=1)
-        controller.observe(other_context, first, 0.30, round_index=2)
+        controller.resolve_challenger(
+            self.context, first, 0.30, 0.01, challenger, 0.295, 0.01
+        )
+        controller.resolve_challenger(
+            other_context, second, 0.30, 0.01, challenger, 0.295, 0.01
+        )
 
         self.assertEqual(controller.active_cell_id(self.context), first.cell_id)
         self.assertEqual(controller.active_cell_id(other_context), second.cell_id)
-        self.assertEqual(controller.ema_mu(self.context, first), 0.10)
-        self.assertEqual(controller.ema_mu(other_context, first), 0.30)
+        first_edges = controller.context_states[self.context.table_key].edges
+        second_edges = controller.context_states[other_context.table_key].edges
+        self.assertIn((first.cell_id, challenger.cell_id), first_edges)
+        self.assertNotIn((first.cell_id, challenger.cell_id), second_edges)
 
     def test_stale_initial_and_probe_results_do_not_modify_policy_state(self) -> None:
         other_context = ContextKey(1, 0)
@@ -251,9 +368,7 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         )
         self.run_runtime(initial_experiment)
         initial_state = initial_controller.context_states[self.context.table_key]
-        self.assertTrue(
-            all(cell.observation_count == 0 for cell in initial_state.cells.values())
-        )
+        self.assertEqual(initial_state.edges, {})
         self.assertEqual(initial_state.cells[ALL_CELLS[-1].cell_id].cooldown, 3)
 
         probe_controller = self.controller()
@@ -274,12 +389,11 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         )
         self.run_runtime(probe_experiment)
         probe_state = probe_controller.context_states[self.context.table_key]
-        self.assertTrue(
-            all(cell.observation_count == 0 for cell in probe_state.cells.values())
-        )
         self.assertEqual(probe_state.cells[ALL_CELLS[-1].cell_id].cooldown, 3)
         self.assertEqual(probe_state.cells[ALL_CELLS[1].cell_id].cooldown, 0)
         self.assertEqual(probe_state.active_cell_id, current.cell_id)
+        self.assertEqual(probe_state.edges, {})
+        self.assertTrue(all(row["pair_status"] == "invalid_pair" for row in rows))
         self.assertTrue(
             all(row["selection_source"] == "stale_pair_discarded" for row in rows)
         )
@@ -297,23 +411,23 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         self.assertEqual(first, CELL_BY_ID["E04_G128"])
         self.assertEqual(second, CELL_BY_ID["E32_G016"])
 
-    def test_observed_challenger_with_lowest_ema_mu_is_selected(self) -> None:
-        controller = self.controller(mu_ema_alpha=1.0)
+    def test_challenger_with_best_edge_improvement_is_selected(self) -> None:
+        controller = self.controller()
         current = ALL_CELLS[0]
         target = ALL_CELLS[-1]
+        controller.cell_for_context(self.context, current)
+        state = controller.context_states[self.context.table_key]
         for cell in ALL_CELLS[1:]:
-            controller.observe(
-                self.context,
-                cell,
-                0.10 if cell == target else 0.30,
-                round_index=0,
+            state.edges[(current.cell_id, cell.cell_id)] = EdgeStats(
+                ema_improvement=0.10 if cell == target else -0.30,
+                comparison_count=1,
             )
 
         self.assertEqual(controller.select_challenger(self.context, current), target)
 
     def test_runtime_captures_at_most_one_challenger_per_round(self) -> None:
         controller = self.controller()
-        experiment, captures, _, _ = self.runtime(
+        experiment, captures, rows, _ = self.runtime(
             controller,
             initial_scores=[score(0.30)],
             challenger_scores=[score(0.30)],
@@ -324,6 +438,7 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         roles = [role for role, _, _ in captures]
         self.assertEqual(roles.count("initial"), 1)
         self.assertEqual(roles.count("probe"), 1)
+        self.assertTrue(all(row["mde_batch_size"] == 2 for row in rows))
 
 
 if __name__ == "__main__":

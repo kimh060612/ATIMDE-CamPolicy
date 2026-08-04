@@ -71,19 +71,15 @@ class QScore:
 
 @dataclass
 class CellStats:
-    ema_mu: Optional[float] = None
-    observation_count: int = 0
     cooldown: int = 0
-    last_seen_round: int = -1
 
-    def update(self, observed_mu: float, *, alpha: float, round_index: int) -> None:
-        self.ema_mu = (
-            observed_mu
-            if self.ema_mu is None
-            else (1.0 - alpha) * self.ema_mu + alpha * observed_mu
-        )
-        self.observation_count += 1
-        self.last_seen_round = round_index
+
+@dataclass
+class EdgeStats:
+    ema_improvement: float = 0.0
+    comparison_count: int = 0
+    challenger_win_count: int = 0
+    ambiguous_count: int = 0
 
 
 @dataclass
@@ -94,3 +90,4 @@ class ContextState:
             cell.cell_id: CellStats() for cell in ALL_CELLS
         }
     )
+    edges: dict[tuple[str, str], EdgeStats] = field(default_factory=dict)

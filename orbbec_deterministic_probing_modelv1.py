@@ -74,8 +74,19 @@ CSV_FIELDNAMES = [
     "stable_at_round_start",
     "transition_only",
     "current_mu",
+    "current_std",
     "challenger_mu",
-    "pairwise_mu_improvement",
+    "challenger_std",
+    "delta_mu",
+    "pair_std",
+    "effective_margin",
+    "pair_confidence",
+    "pair_status",
+    "selected_mu",
+    "selected_std",
+    "offload_risk",
+    "edge_ema_before",
+    "edge_ema_after",
     "probe_trigger_threshold",
     "switch_margin",
     "active_cell_before",
@@ -641,8 +652,19 @@ class ModelV1Experiment:
             "stable_at_round_start": "",
             "transition_only": 0,
             "current_mu": "",
+            "current_std": "",
             "challenger_mu": "",
-            "pairwise_mu_improvement": "",
+            "challenger_std": "",
+            "delta_mu": "",
+            "pair_std": "",
+            "effective_margin": "",
+            "pair_confidence": "",
+            "pair_status": "not_probed",
+            "selected_mu": "",
+            "selected_std": "",
+            "offload_risk": "",
+            "edge_ema_before": "",
+            "edge_ema_after": "",
             "probe_trigger_threshold": self.policy.probe_trigger_threshold,
             "switch_margin": self.policy.switch_margin,
             "active_cell_before": "",
@@ -718,6 +740,21 @@ class ModelV1Experiment:
 
         self._store_score(row, future.result())
 
+    def _await_pair_result(
+        self,
+        rows: Sequence[dict[str, Any]],
+        future: Future[list[QScore]],
+    ) -> None:
+        while not future.done():
+            self.context_provider.get()
+            wait([future], timeout=self.inference_poll_sec)
+
+        scores = future.result()
+        if len(scores) != len(rows):
+            raise RuntimeError("Pair inference did not return one score per frame.")
+        for row, score in zip(rows, scores):
+            self._store_score(row, score)
+
     def _finish_decision(
         self,
         rows: Sequence[dict[str, Any]],
@@ -789,6 +826,7 @@ class ModelV1Experiment:
 
         for row in rows:
             row["selection_source"] = "stale_pair_discarded"
+            row["pair_status"] = "invalid_pair"
             row["active_cell_after"] = self.policy.active_cell_id(latched_context) or ""
         self._finish_decision(
             rows,
@@ -863,7 +901,8 @@ class ModelV1Experiment:
             mu=float(initial_row["camera_bias"]),
         )
         current_mu = float(initial_score.mu)
-        initial_row["current_mu"] = current_mu
+        current_std = float(initial_score.uncertainty)
+        initial_row.update(current_mu=current_mu, current_std=current_std)
         print(
             f"[Decision] bias={initial_score.mu:.6f} std="
             f"{initial_score.uncertainty:.6f} q={initial_score.q:.6f}"
@@ -875,6 +914,8 @@ class ModelV1Experiment:
                     "frame_action": "transition_only",
                     "selection_source": "transition_hold",
                     "active_cell_after": active_cell_before,
+                    "selected_mu": current_mu,
+                    "selected_std": current_std,
                 }
             )
             transition_decision = PolicyDecision(
@@ -905,23 +946,28 @@ class ModelV1Experiment:
         )
         initial_row["frame_action"] = "probe" if should_probe else "use"
         if not should_probe:
-            self.policy.observe(
-                latched_context,
-                current_cell,
-                current_mu,
-                round_index=self.round_index,
-            )
             self.policy.complete_round(latched_context)
+            should_offload, offload_risk = self.policy.evaluate_offload(
+                current_mu, current_std, "not_probed"
+            )
             initial_row.update(
                 {
                     "selection_source": "current_below_trigger",
                     "active_cell_after": active_cell_before,
+                    "selected_mu": current_mu,
+                    "selected_std": current_std,
+                    "offload_risk": offload_risk,
                 }
             )
             final_decision = PolicyDecision(
-                "use", "current_below_trigger", current_cell, initial_score
+                "offload" if should_offload else "use",
+                "current_below_trigger",
+                current_cell,
+                initial_score,
             )
             self._finish_decision([initial_row], final_decision)
+            if should_offload:
+                self.policy.invoke_offload(latched_context, final_decision)
             self.round_index += 1
             return
 
@@ -932,24 +978,28 @@ class ModelV1Experiment:
                 if challenger is None
                 else "probe_decision_budget_exhausted"
             )
-            self.policy.observe(
-                latched_context,
-                current_cell,
-                current_mu,
-                round_index=self.round_index,
-            )
             self.policy.complete_round(latched_context)
+            should_offload, offload_risk = self.policy.evaluate_offload(
+                current_mu, current_std, "not_probed"
+            )
             initial_row.update(
                 {
                     "selection_source": "no_available_challenger",
                     "active_cell_after": active_cell_before,
+                    "selected_mu": current_mu,
+                    "selected_std": current_std,
+                    "offload_risk": offload_risk,
                 }
             )
             final_decision = PolicyDecision(
-                "offload", reason, current_cell, initial_score
+                "offload" if should_offload else "use",
+                reason,
+                current_cell,
+                initial_score,
             )
             self._finish_decision([initial_row], final_decision)
-            self.policy.invoke_offload(latched_context, final_decision)
+            if should_offload:
+                self.policy.invoke_offload(latched_context, final_decision)
             self.round_index += 1
             return
 
@@ -974,32 +1024,51 @@ class ModelV1Experiment:
                 "probe_step": 1,
                 "stable_at_round_start": 1,
                 "current_mu": current_mu,
+                "current_std": current_std,
                 "active_cell_before": active_cell_before,
             }
         )
-        probe_future = self.executor.submit(
-            self.predictor.predict,
-            probe_image,
-            context=latched_context,
-            exposure_us=float(probe_row["exposure_us_model"]),
-            gain=float(
-                probe_row["actual_gain"]
-                if probe_row["actual_gain"] not in (None, "")
-                else probe_row["gain"]
-            ),
-        )
         self._save_capture(probe_row, probe_image, probe_depth)
-        self._await_probe_result(probe_row, probe_future)
-
+        round_rows = [initial_row, probe_row]
+        pair_future = self.executor.submit(
+            self.predictor.predict_batch,
+            [initial_image, probe_image],
+            contexts=[latched_context, latched_context],
+            exposure_us_values=[
+                float(row["exposure_us_model"]) for row in round_rows
+            ],
+            gains=[
+                float(
+                    row["actual_gain"]
+                    if row["actual_gain"] not in (None, "")
+                    else row["gain"]
+                )
+                for row in round_rows
+            ],
+        )
+        self._await_pair_result(round_rows, pair_future)
+        initial_score = QScore(
+            q=float(initial_row["q"]),
+            uncertainty=float(initial_row["std"]),
+            mu=float(initial_row["camera_bias"]),
+        )
         probe_score = QScore(
             q=float(probe_row["q"]),
             uncertainty=float(probe_row["std"]),
             mu=float(probe_row["camera_bias"]),
         )
+        current_mu = float(initial_score.mu)
+        current_std = float(initial_score.uncertainty)
         challenger_mu = float(probe_score.mu)
-        probe_row["challenger_mu"] = challenger_mu
+        challenger_std = float(probe_score.uncertainty)
+        for row in round_rows:
+            row.update(
+                current_mu=current_mu,
+                current_std=current_std,
+                challenger_mu=challenger_mu,
+                challenger_std=challenger_std,
+            )
         probe_row["frame_action"] = "probe_candidate"
-        round_rows = [initial_row, probe_row]
 
         probe_cached_decision = PolicyDecision(
             "use",
@@ -1016,37 +1085,30 @@ class ModelV1Experiment:
             self.round_index += 1
             return
 
-        self.policy.observe(
-            latched_context,
-            current_cell,
-            current_mu,
-            round_index=self.round_index,
-        )
-        self.policy.observe(
-            latched_context,
-            challenger,
-            challenger_mu,
-            round_index=self.round_index,
-        )
         self.policy.complete_round(latched_context)
-        selected = self.policy.resolve_challenger(
+        pair = self.policy.resolve_challenger(
             latched_context,
             current_cell,
             current_mu,
+            current_std,
             challenger,
             challenger_mu,
+            challenger_std,
         )
-        challenger_won = selected == challenger
-        selection_source = (
-            "pairwise_challenger_won"
-            if challenger_won
-            else "pairwise_current_kept"
+        selected_score = (
+            probe_score if pair.selected_cell == challenger else initial_score
         )
+        selected_mu = float(selected_score.mu)
+        selected_std = float(selected_score.uncertainty)
+        should_offload, offload_risk = self.policy.evaluate_offload(
+            selected_mu, selected_std, pair.status
+        )
+        selection_source = f"pairwise_{pair.status}"
         final_decision = PolicyDecision(
-            "use" if challenger_won else "offload",
+            "offload" if should_offload else "use",
             selection_source,
-            selected,
-            probe_score if challenger_won else initial_score,
+            pair.selected_cell,
+            selected_score,
         )
         active_cell_after = self.policy.active_cell_id(latched_context) or ""
         challenger_cooldown = self.policy.challenger_cooldown(
@@ -1057,7 +1119,17 @@ class ModelV1Experiment:
                 {
                     "selection_source": selection_source,
                     "challenger_mu": challenger_mu,
-                    "pairwise_mu_improvement": current_mu - challenger_mu,
+                    "challenger_std": challenger_std,
+                    "delta_mu": pair.delta_mu,
+                    "pair_std": pair.pair_std,
+                    "effective_margin": pair.effective_margin,
+                    "pair_confidence": pair.confidence,
+                    "pair_status": pair.status,
+                    "selected_mu": selected_mu,
+                    "selected_std": selected_std,
+                    "offload_risk": offload_risk,
+                    "edge_ema_before": pair.edge_ema_before,
+                    "edge_ema_after": pair.edge_ema_after,
                     "active_cell_after": active_cell_after,
                     "challenger_cooldown": challenger_cooldown,
                 }
@@ -1067,14 +1139,14 @@ class ModelV1Experiment:
         print(
             f"[Probe result] selected={final_decision.selected_cell.cell_id} "
             f"current_mu={current_mu:.6f} challenger_mu={challenger_mu:.6f} "
-            f"action={final_decision.action} reason={final_decision.reason}"
+            f"status={pair.status} action={final_decision.action}"
         )
 
-        if not challenger_won:
+        if pair.selected_cell == current_cell:
             self._apply_control_cell(
-                current_cell, reason="pairwise_current_kept"
+                current_cell, reason=selection_source
             )
-        if final_decision.action == "offload":
+        if should_offload:
             self.policy.invoke_offload(latched_context, final_decision)
         self.round_index += 1
 
@@ -1214,8 +1286,13 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--probe-trigger-threshold", type=float, default=0.11)
     parser.add_argument("--switch-margin", type=float, default=0.01)
-    parser.add_argument("--mu-ema-alpha", type=float, default=0.3)
     parser.add_argument("--challenger-cooldown-rounds", type=int, default=5)
+    parser.add_argument("--pair-uncertainty-weight", type=float, default=0.25)
+    parser.add_argument("--reference-pair-std", type=float, default=0.03)
+    parser.add_argument("--edge-ema-alpha", type=float, default=0.3)
+    parser.add_argument("--offload-uncertainty-weight", type=float, default=1.0)
+    parser.add_argument("--offload-threshold", type=float, default=0.15)
+    parser.add_argument("--ambiguous-offload-threshold", type=float, default=0.11)
     parser.add_argument("--offload-command", type=str, default=None)
     parser.add_argument("--safety-config", type=Path, default=None)
 
@@ -1320,8 +1397,13 @@ def main() -> int:
             safety_policy,
             probe_trigger_threshold=args.probe_trigger_threshold,
             switch_margin=args.switch_margin,
-            mu_ema_alpha=args.mu_ema_alpha,
             challenger_cooldown_rounds=args.challenger_cooldown_rounds,
+            pair_uncertainty_weight=args.pair_uncertainty_weight,
+            reference_pair_std=args.reference_pair_std,
+            edge_ema_alpha=args.edge_ema_alpha,
+            offload_uncertainty_weight=args.offload_uncertainty_weight,
+            offload_threshold=args.offload_threshold,
+            ambiguous_offload_threshold=args.ambiguous_offload_threshold,
             offload_command=args.offload_command,
         )
 
