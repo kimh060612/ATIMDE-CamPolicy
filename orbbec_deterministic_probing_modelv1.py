@@ -87,6 +87,15 @@ CSV_FIELDNAMES = [
     "offload_risk",
     "edge_ema_before",
     "edge_ema_after",
+    "probe_pending_before",
+    "probe_pending_after",
+    "bootstrap_probes_remaining",
+    "pair_capture_gap_ms",
+    "max_pair_capture_gap_ms",
+    "capture_context_initial",
+    "capture_context_challenger",
+    "capture_valid_pair",
+    "initial_inference_count",
     "probe_trigger_threshold",
     "switch_margin",
     "active_cell_before",
@@ -526,7 +535,7 @@ class ModelV1Experiment:
         camera_parameter_warn_ms: float,
         mde_inference_warn_ms: float,
         control_decision_warn_ms: float,
-        probe_decision_budget_ms: float,
+        max_pair_capture_gap_ms: float,
         inference_poll_ms: float,
         evaluation_alignment: str,
         min_depth_m: float,
@@ -537,10 +546,14 @@ class ModelV1Experiment:
             camera_parameter_warn_ms,
             mde_inference_warn_ms,
             control_decision_warn_ms,
-            probe_decision_budget_ms,
             inference_poll_ms,
         ) <= 0.0:
             raise ValueError("Latency warning and polling intervals must be positive.")
+        if (
+            not math.isfinite(max_pair_capture_gap_ms)
+            or max_pair_capture_gap_ms <= 0.0
+        ):
+            raise ValueError("Maximum pair capture gap must be finite and positive.")
 
         self.camera = camera
         self.context_provider = context_provider
@@ -552,7 +565,7 @@ class ModelV1Experiment:
         self.camera_parameter_warn_ms = camera_parameter_warn_ms
         self.mde_inference_warn_ms = mde_inference_warn_ms
         self.control_decision_warn_ms = control_decision_warn_ms
-        self.probe_decision_budget_ms = probe_decision_budget_ms
+        self.max_pair_capture_gap_ms = max_pair_capture_gap_ms
         self.inference_poll_sec = inference_poll_ms / 1000.0
         self.evaluation_alignment = evaluation_alignment
         self.min_depth_m = min_depth_m
@@ -665,6 +678,15 @@ class ModelV1Experiment:
             "offload_risk": "",
             "edge_ema_before": "",
             "edge_ema_after": "",
+            "probe_pending_before": "",
+            "probe_pending_after": "",
+            "bootstrap_probes_remaining": "",
+            "pair_capture_gap_ms": "",
+            "max_pair_capture_gap_ms": self.max_pair_capture_gap_ms,
+            "capture_context_initial": "",
+            "capture_context_challenger": "",
+            "capture_valid_pair": "",
+            "initial_inference_count": 0,
             "probe_trigger_threshold": self.policy.probe_trigger_threshold,
             "switch_margin": self.policy.switch_margin,
             "active_cell_before": "",
@@ -729,7 +751,7 @@ class ModelV1Experiment:
                 f"capture={row['capture_index']} mde_inference_ms={inference_ms:.2f}"
             )
 
-    def _await_probe_result(
+    def _await_single_result(
         self,
         row: dict[str, Any],
         future: Future[QScore],
@@ -737,7 +759,6 @@ class ModelV1Experiment:
         while not future.done():
             self.context_provider.get()
             wait([future], timeout=self.inference_poll_sec)
-
         self._store_score(row, future.result())
 
     def _await_pair_result(
@@ -755,36 +776,31 @@ class ModelV1Experiment:
         for row, score in zip(rows, scores):
             self._store_score(row, score)
 
+    @staticmethod
+    def _score_from_row(row: dict[str, Any]) -> QScore:
+        return QScore(
+            q=float(row["q"]),
+            uncertainty=float(row["std"]),
+            mu=float(row["camera_bias"]),
+        )
+
     def _finish_decision(
         self,
         rows: Sequence[dict[str, Any]],
         decision: PolicyDecision,
-        *,
-        stale_context: Optional[ContextKey] = None,
     ) -> None:
         decision_time_ns = time.time_ns()
         for row in rows:
             row["probe_stop_reason"] = decision.reason
-            if stale_context is None:
-                row["round_action"] = decision.action
-                row["decision_reason"] = decision.reason
-                row["offload_requested"] = int(decision.action == "offload")
-                row["control_context"] = (
-                    f"{row['motion_state']},{row['light_state']}"
-                )
-            else:
-                row["round_action"] = "deferred"
-                row["decision_reason"] = (
-                    f"{decision.reason};control_deferred_context_changed"
-                )
-                row["offload_requested"] = 0
-                row["stale_for_control"] = 1
-                row["control_context"] = stale_context.table_key
-                row["discard_reason"] = (
-                    f"control_only:{row['motion_state']},{row['light_state']}"
-                    f"->{stale_context.table_key}"
-                )
-            row["selected"] = int(row["cell_id"] == decision.selected_cell.cell_id)
+            row["round_action"] = decision.action
+            row["decision_reason"] = decision.reason
+            row["offload_requested"] = int(decision.action == "offload")
+            row["control_context"] = (
+                f"{row['motion_state']},{row['light_state']}"
+            )
+            row["selected"] = int(
+                row["cell_id"] == decision.selected_cell.cell_id
+            )
             delay_ms = max(
                 0.0, (decision_time_ns - int(row["timestamp_ns"])) / 1_000_000.0
             )
@@ -797,245 +813,266 @@ class ModelV1Experiment:
                     f"control_decision_delay_ms={delay_ms:.2f}"
                 )
 
-    def _context_state(
-        self,
-    ) -> tuple[ContextKey, bool]:
+    def _context_state(self) -> tuple[ContextKey, bool]:
         context = self.context_provider.get()
         stable = bool(getattr(self.context_provider, "is_stable", True))
         return context, stable
 
-    def _discard_if_stale(
+    def _apply_round_control(
+        self,
+        *,
+        latched_context: ContextKey,
+        decision_context: ContextKey,
+        decision_context_stable: bool,
+        current_cell: SensorCell,
+        selected_cell: SensorCell,
+        rows: Sequence[dict[str, Any]],
+        reason: str,
+    ) -> None:
+        context_changed = (
+            not decision_context_stable or decision_context != latched_context
+        )
+        if not context_changed:
+            control_cell = selected_cell
+        elif decision_context_stable:
+            control_cell = self.policy.committed_cell_for_context(
+                decision_context, self.default_cell
+            )
+        else:
+            control_cell = current_cell
+
+        if self.last_applied_cell != control_cell:
+            self._apply_control_cell(control_cell, reason=reason)
+
+        for row in rows:
+            row["control_context"] = decision_context.table_key
+            row["stale_for_control"] = int(context_changed)
+            if context_changed:
+                row["discard_reason"] = (
+                    f"physical_only:{latched_context.table_key}"
+                    f"->{decision_context.table_key}"
+                )
+
+    def run_transition_round(
         self,
         latched_context: ContextKey,
-        rows: Sequence[dict[str, Any]],
-        decision: PolicyDecision,
-        restore_cell: SensorCell,
-    ) -> bool:
-        current_context, stable = self._context_state()
-        if stable and current_context == latched_context:
-            return False
-
-        if stable:
-            control_cell = self.policy.committed_cell_for_context(
-                current_context, self.default_cell
-            )
-            control_context = current_context
-        else:
-            control_cell = restore_cell
-            control_context = current_context
-
-        for row in rows:
-            row["selection_source"] = "stale_pair_discarded"
-            row["pair_status"] = "invalid_pair"
-            row["active_cell_after"] = self.policy.active_cell_id(latched_context) or ""
-        self._finish_decision(
-            rows,
-            decision,
-            stale_context=control_context,
+        current_cell: SensorCell,
+    ) -> None:
+        state = self.policy.context_states.get(latched_context.table_key)
+        pending = state.probe_pending if state is not None else ""
+        bootstrap = (
+            state.bootstrap_probes_remaining if state is not None else ""
         )
-        for row in rows:
-            row["selected"] = 0
-        if self.last_applied_cell != control_cell:
-            self._apply_control_cell(control_cell, reason="stale_pair_discarded")
-        print(
-            f"[Context control] capture={latched_context.table_key} "
-            f"control={control_context.table_key} cell={control_cell.cell_id} "
-            "reason=stale_pair_discarded"
-        )
-        return True
-
-    def _probe_fits_budget(self, initial_row: dict[str, Any]) -> bool:
-        elapsed_ms = max(
-            0.0,
-            (time.time_ns() - int(initial_row["timestamp_ns"])) / 1_000_000.0,
-        )
-        next_probe_ms = (
-            float(initial_row["camera_parameter_ms"])
-            + float(initial_row["mde_inference_ms"])
-        )
-        return elapsed_ms + next_probe_ms <= self.probe_decision_budget_ms
-
-    def run_round(self) -> None:
-        latched_context, stable_at_round_start = self._context_state()
-        latched_context.validate()
-        current_cell = (
-            self.policy.cell_for_context(latched_context, self.default_cell)
-            if stable_at_round_start
-            else self.last_applied_cell
-        )
-        active_cell_before = self.policy.active_cell_id(latched_context) or ""
-        print(
-            f"\n[Round {self.round_index}] context={latched_context.table_key} "
-            f"cell={current_cell.cell_id} stable={stable_at_round_start}"
-        )
-
-        initial_row, initial_image, initial_depth = self._capture(
+        row, image, depth = self._capture(
             current_cell,
             latched_context,
             "initial",
-            apply_cell=stable_at_round_start,
+            apply_cell=False,
         )
-        initial_row.update(
+        row.update(
             {
-                "stable_at_round_start": int(stable_at_round_start),
-                "transition_only": int(not stable_at_round_start),
-                "active_cell_before": active_cell_before,
+                "stable_at_round_start": 0,
+                "transition_only": 1,
+                "active_cell_before": (
+                    state.active_cell_id if state is not None else ""
+                ),
+                "active_cell_after": (
+                    state.active_cell_id if state is not None else ""
+                ),
+                "selection_source": "transition_hold",
+                "frame_action": "transition_only",
+                "probe_pending_before": pending,
+                "probe_pending_after": pending,
+                "bootstrap_probes_remaining": bootstrap,
+                "capture_context_initial": latched_context.table_key,
+                "pair_status": "not_probed",
+                "initial_inference_count": 1,
             }
         )
-        initial_future = self.executor.submit(
+        future = self.executor.submit(
             self.predictor.predict,
-            initial_image,
+            image,
             context=latched_context,
-            exposure_us=float(initial_row["exposure_us_model"]),
+            exposure_us=float(row["exposure_us_model"]),
             gain=float(
-                initial_row["actual_gain"]
-                if initial_row["actual_gain"] not in (None, "")
-                else initial_row["gain"]
+                row["actual_gain"]
+                if row["actual_gain"] not in (None, "")
+                else row["gain"]
             ),
         )
-        self._save_capture(initial_row, initial_image, initial_depth)
-        self._await_probe_result(initial_row, initial_future)
-        initial_score = QScore(
-            q=float(initial_row["q"]),
-            uncertainty=float(initial_row["std"]),
-            mu=float(initial_row["camera_bias"]),
+        self._save_capture(row, image, depth)
+        self._await_single_result(row, future)
+        score = self._score_from_row(row)
+        row.update(
+            current_mu=score.mu,
+            current_std=score.uncertainty,
+            selected_mu=score.mu,
+            selected_std=score.uncertainty,
         )
-        current_mu = float(initial_score.mu)
-        current_std = float(initial_score.uncertainty)
-        initial_row.update(current_mu=current_mu, current_std=current_std)
-        print(
-            f"[Decision] bias={initial_score.mu:.6f} std="
-            f"{initial_score.uncertainty:.6f} q={initial_score.q:.6f}"
+        decision = PolicyDecision(
+            "use", "transition_hold", current_cell, score
         )
+        self._finish_decision([row], decision)
+        row["selected"] = 0
 
-        if not stable_at_round_start:
-            initial_row.update(
-                {
-                    "frame_action": "transition_only",
-                    "selection_source": "transition_hold",
-                    "active_cell_after": active_cell_before,
-                    "selected_mu": current_mu,
-                    "selected_std": current_std,
-                }
-            )
-            transition_decision = PolicyDecision(
-                "use", "transition_hold", current_cell, initial_score
-            )
-            self._finish_decision([initial_row], transition_decision)
-            initial_row["selected"] = 0
-            self.round_index += 1
-            return
-
-        cached_decision = PolicyDecision(
-            "use",
-            "capture_context_result_cached",
-            current_cell,
-            initial_score,
+    def run_current_only_round(
+        self,
+        latched_context: ContextKey,
+        current_cell: SensorCell,
+        active_cell_before: str,
+    ) -> None:
+        state = self.policy.state_for_context(latched_context)
+        pending_before = state.probe_pending
+        row, image, depth = self._capture(
+            current_cell, latched_context, "initial"
         )
-        if self._discard_if_stale(
-            latched_context,
-            [initial_row],
-            cached_decision,
-            current_cell,
-        ):
-            self.round_index += 1
-            return
-
-        should_probe = self.policy.record_current_result(
-            latched_context, current_cell, current_mu
+        capture_context, capture_stable = self._context_state()
+        capture_valid = (
+            capture_stable and capture_context == latched_context
         )
-        initial_row["frame_action"] = "probe" if should_probe else "use"
-        if not should_probe:
-            self.policy.complete_round(latched_context)
-            should_offload, offload_risk = self.policy.evaluate_offload(
-                current_mu, current_std, "not_probed"
-            )
-            initial_row.update(
-                {
-                    "selection_source": "current_below_trigger",
-                    "active_cell_after": active_cell_before,
-                    "selected_mu": current_mu,
-                    "selected_std": current_std,
-                    "offload_risk": offload_risk,
-                }
-            )
-            final_decision = PolicyDecision(
-                "offload" if should_offload else "use",
-                "current_below_trigger",
-                current_cell,
-                initial_score,
-            )
-            self._finish_decision([initial_row], final_decision)
-            if should_offload:
-                self.policy.invoke_offload(latched_context, final_decision)
-            self.round_index += 1
-            return
+        row.update(
+            {
+                "stable_at_round_start": 1,
+                "active_cell_before": active_cell_before,
+                "capture_context_initial": capture_context.table_key,
+                "probe_pending_before": int(pending_before),
+                "initial_inference_count": 1,
+            }
+        )
+        future = self.executor.submit(
+            self.predictor.predict,
+            image,
+            context=latched_context,
+            exposure_us=float(row["exposure_us_model"]),
+            gain=float(
+                row["actual_gain"]
+                if row["actual_gain"] not in (None, "")
+                else row["gain"]
+            ),
+        )
+        self._save_capture(row, image, depth)
+        self._await_single_result(row, future)
+        score = self._score_from_row(row)
+        current_mu = float(score.mu)
+        current_std = float(score.uncertainty)
+        decision_context, decision_stable = self._context_state()
 
-        challenger = self.policy.select_challenger(latched_context, current_cell)
-        if challenger is None or not self._probe_fits_budget(initial_row):
-            reason = (
-                "no_available_challenger"
-                if challenger is None
-                else "probe_decision_budget_exhausted"
+        if capture_valid:
+            state.probe_pending = (
+                current_mu > self.policy.probe_trigger_threshold
             )
             self.policy.complete_round(latched_context)
+            pair_status = "not_probed"
+            selection_source = "current_only"
             should_offload, offload_risk = self.policy.evaluate_offload(
+                current_mu, current_std, pair_status
+            )
+        else:
+            state.probe_pending = True
+            pair_status = "invalid_pair"
+            selection_source = "stale_pair_discarded"
+            should_offload = False
+            _, offload_risk = self.policy.evaluate_offload(
                 current_mu, current_std, "not_probed"
             )
-            initial_row.update(
-                {
-                    "selection_source": "no_available_challenger",
-                    "active_cell_after": active_cell_before,
-                    "selected_mu": current_mu,
-                    "selected_std": current_std,
-                    "offload_risk": offload_risk,
-                }
-            )
-            final_decision = PolicyDecision(
-                "offload" if should_offload else "use",
-                reason,
-                current_cell,
-                initial_score,
-            )
-            self._finish_decision([initial_row], final_decision)
-            if should_offload:
-                self.policy.invoke_offload(latched_context, final_decision)
-            self.round_index += 1
-            return
 
-        if self._discard_if_stale(
-            latched_context,
-            [initial_row],
-            cached_decision,
+        row.update(
+            {
+                "current_mu": current_mu,
+                "current_std": current_std,
+                "selected_mu": current_mu,
+                "selected_std": current_std,
+                "offload_risk": offload_risk,
+                "pair_status": pair_status,
+                "selection_source": selection_source,
+                "frame_action": "use",
+                "active_cell_after": state.active_cell_id or "",
+                "probe_pending_after": int(state.probe_pending),
+                "bootstrap_probes_remaining": (
+                    state.bootstrap_probes_remaining
+                ),
+            }
+        )
+        decision = PolicyDecision(
+            "offload" if should_offload else "use",
+            selection_source,
             current_cell,
-        ):
-            self.round_index += 1
+            score,
+        )
+        self._finish_decision([row], decision)
+        self._apply_round_control(
+            latched_context=latched_context,
+            decision_context=decision_context,
+            decision_context_stable=decision_stable,
+            current_cell=current_cell,
+            selected_cell=current_cell,
+            rows=[row],
+            reason=selection_source,
+        )
+        if should_offload:
+            self.policy.invoke_offload(latched_context, decision)
+
+    def run_back_to_back_pair_round(
+        self,
+        latched_context: ContextKey,
+        current_cell: SensorCell,
+        active_cell_before: str,
+    ) -> None:
+        state = self.policy.state_for_context(latched_context)
+        pending_before = state.probe_pending
+        challenger = self.policy.select_challenger(
+            latched_context, current_cell
+        )
+        if challenger is None:
+            self.run_current_only_round(
+                latched_context, current_cell, active_cell_before
+            )
             return
 
         print(
             f"[Probe] context={latched_context.table_key} "
             f"challenger={challenger.cell_id}"
         )
+        initial_row, initial_image, initial_depth = self._capture(
+            current_cell, latched_context, "initial"
+        )
         probe_row, probe_image, probe_depth = self._capture(
             challenger, latched_context, "probe"
         )
-        probe_row.update(
-            {
-                "probe_step": 1,
-                "stable_at_round_start": 1,
-                "current_mu": current_mu,
-                "current_std": current_std,
-                "active_cell_before": active_cell_before,
-            }
+
+        capture_context, capture_stable = self._context_state()
+        pair_capture_gap_ms = (
+            int(probe_row["timestamp_ns"]) - int(initial_row["timestamp_ns"])
+        ) / 1_000_000.0
+        capture_valid = (
+            capture_stable
+            and capture_context == latched_context
+            and pair_capture_gap_ms <= self.max_pair_capture_gap_ms
         )
+        rows = [initial_row, probe_row]
+        common = {
+            "stable_at_round_start": 1,
+            "active_cell_before": active_cell_before,
+            "probe_pending_before": int(pending_before),
+            "pair_capture_gap_ms": pair_capture_gap_ms,
+            "capture_context_initial": latched_context.table_key,
+            "capture_context_challenger": capture_context.table_key,
+            "capture_valid_pair": int(capture_valid),
+            "initial_inference_count": 1,
+        }
+        for row in rows:
+            row.update(common)
+        initial_row["frame_action"] = "pair_current"
+        probe_row.update(probe_step=1, frame_action="probe_candidate")
+
+        self._save_capture(initial_row, initial_image, initial_depth)
         self._save_capture(probe_row, probe_image, probe_depth)
-        round_rows = [initial_row, probe_row]
-        pair_future = self.executor.submit(
+        future = self.executor.submit(
             self.predictor.predict_batch,
             [initial_image, probe_image],
             contexts=[latched_context, latched_context],
             exposure_us_values=[
-                float(row["exposure_us_model"]) for row in round_rows
+                float(row["exposure_us_model"]) for row in rows
             ],
             gains=[
                 float(
@@ -1043,111 +1080,142 @@ class ModelV1Experiment:
                     if row["actual_gain"] not in (None, "")
                     else row["gain"]
                 )
-                for row in round_rows
+                for row in rows
             ],
         )
-        self._await_pair_result(round_rows, pair_future)
-        initial_score = QScore(
-            q=float(initial_row["q"]),
-            uncertainty=float(initial_row["std"]),
-            mu=float(initial_row["camera_bias"]),
-        )
-        probe_score = QScore(
-            q=float(probe_row["q"]),
-            uncertainty=float(probe_row["std"]),
-            mu=float(probe_row["camera_bias"]),
-        )
-        current_mu = float(initial_score.mu)
-        current_std = float(initial_score.uncertainty)
-        challenger_mu = float(probe_score.mu)
-        challenger_std = float(probe_score.uncertainty)
-        for row in round_rows:
-            row.update(
-                current_mu=current_mu,
-                current_std=current_std,
-                challenger_mu=challenger_mu,
-                challenger_std=challenger_std,
-            )
-        probe_row["frame_action"] = "probe_candidate"
+        self._await_pair_result(rows, future)
+        current_score = self._score_from_row(initial_row)
+        challenger_score = self._score_from_row(probe_row)
+        current_mu = float(current_score.mu)
+        current_std = float(current_score.uncertainty)
+        challenger_mu = float(challenger_score.mu)
+        challenger_std = float(challenger_score.uncertainty)
+        decision_context, decision_stable = self._context_state()
 
-        probe_cached_decision = PolicyDecision(
-            "use",
-            "capture_context_result_cached",
-            challenger,
-            probe_score,
+        if capture_valid:
+            self.policy.complete_round(latched_context)
+            pair = self.policy.resolve_challenger(
+                latched_context,
+                current_cell,
+                current_mu,
+                current_std,
+                challenger,
+                challenger_mu,
+                challenger_std,
+            )
+            selected_score = (
+                challenger_score
+                if pair.selected_cell == challenger
+                else current_score
+            )
+            selected_mu = float(selected_score.mu)
+            selected_std = float(selected_score.uncertainty)
+            state.probe_pending = (
+                selected_mu > self.policy.probe_trigger_threshold
+            )
+            state.bootstrap_probes_remaining = max(
+                state.bootstrap_probes_remaining - 1, 0
+            )
+            should_offload, offload_risk = self.policy.evaluate_offload(
+                selected_mu, selected_std, pair.status
+            )
+            selection_source = f"pairwise_{pair.status}"
+            metrics = {
+                "delta_mu": pair.delta_mu,
+                "pair_std": pair.pair_std,
+                "effective_margin": pair.effective_margin,
+                "pair_confidence": pair.confidence,
+                "edge_ema_before": pair.edge_ema_before,
+                "edge_ema_after": pair.edge_ema_after,
+            }
+        else:
+            state.probe_pending = True
+            pair = None
+            selected_score = current_score
+            selected_mu = current_mu
+            selected_std = current_std
+            should_offload = False
+            _, offload_risk = self.policy.evaluate_offload(
+                selected_mu, selected_std, "not_probed"
+            )
+            selection_source = "stale_pair_discarded"
+            metrics = {}
+
+        pair_status = pair.status if pair is not None else "invalid_pair"
+        selected_cell = (
+            pair.selected_cell if pair is not None else current_cell
         )
-        if self._discard_if_stale(
-            latched_context,
-            round_rows,
-            probe_cached_decision,
-            current_cell,
-        ):
+        common.update(
+            {
+                "current_mu": current_mu,
+                "current_std": current_std,
+                "challenger_mu": challenger_mu,
+                "challenger_std": challenger_std,
+                "pair_status": pair_status,
+                "selected_mu": selected_mu,
+                "selected_std": selected_std,
+                "offload_risk": offload_risk,
+                "selection_source": selection_source,
+                "active_cell_after": state.active_cell_id or "",
+                "challenger_cooldown": self.policy.challenger_cooldown(
+                    latched_context, challenger
+                ),
+                "probe_pending_after": int(state.probe_pending),
+                "bootstrap_probes_remaining": (
+                    state.bootstrap_probes_remaining
+                ),
+                **metrics,
+            }
+        )
+        for row in rows:
+            row.update(common)
+
+        decision = PolicyDecision(
+            "offload" if should_offload else "use",
+            selection_source,
+            selected_cell,
+            selected_score,
+        )
+        self._finish_decision(rows, decision)
+        self._apply_round_control(
+            latched_context=latched_context,
+            decision_context=decision_context,
+            decision_context_stable=decision_stable,
+            current_cell=current_cell,
+            selected_cell=selected_cell,
+            rows=rows,
+            reason=selection_source,
+        )
+        if should_offload:
+            self.policy.invoke_offload(latched_context, decision)
+
+    def run_round(self) -> None:
+        latched_context, stable_at_round_start = self._context_state()
+        latched_context.validate()
+        if not stable_at_round_start:
+            self.run_transition_round(
+                latched_context, self.last_applied_cell
+            )
             self.round_index += 1
             return
 
-        self.policy.complete_round(latched_context)
-        pair = self.policy.resolve_challenger(
-            latched_context,
-            current_cell,
-            current_mu,
-            current_std,
-            challenger,
-            challenger_mu,
-            challenger_std,
+        current_cell = self.policy.cell_for_context(
+            latched_context, self.default_cell
         )
-        selected_score = (
-            probe_score if pair.selected_cell == challenger else initial_score
-        )
-        selected_mu = float(selected_score.mu)
-        selected_std = float(selected_score.uncertainty)
-        should_offload, offload_risk = self.policy.evaluate_offload(
-            selected_mu, selected_std, pair.status
-        )
-        selection_source = f"pairwise_{pair.status}"
-        final_decision = PolicyDecision(
-            "offload" if should_offload else "use",
-            selection_source,
-            pair.selected_cell,
-            selected_score,
-        )
-        active_cell_after = self.policy.active_cell_id(latched_context) or ""
-        challenger_cooldown = self.policy.challenger_cooldown(
-            latched_context, challenger
-        )
-        for row in round_rows:
-            row.update(
-                {
-                    "selection_source": selection_source,
-                    "challenger_mu": challenger_mu,
-                    "challenger_std": challenger_std,
-                    "delta_mu": pair.delta_mu,
-                    "pair_std": pair.pair_std,
-                    "effective_margin": pair.effective_margin,
-                    "pair_confidence": pair.confidence,
-                    "pair_status": pair.status,
-                    "selected_mu": selected_mu,
-                    "selected_std": selected_std,
-                    "offload_risk": offload_risk,
-                    "edge_ema_before": pair.edge_ema_before,
-                    "edge_ema_after": pair.edge_ema_after,
-                    "active_cell_after": active_cell_after,
-                    "challenger_cooldown": challenger_cooldown,
-                }
-            )
-
-        self._finish_decision(round_rows, final_decision)
+        state = self.policy.state_for_context(latched_context)
+        active_cell_before = state.active_cell_id or ""
         print(
-            f"[Probe result] selected={final_decision.selected_cell.cell_id} "
-            f"current_mu={current_mu:.6f} challenger_mu={challenger_mu:.6f} "
-            f"status={pair.status} action={final_decision.action}"
+            f"\n[Round {self.round_index}] context={latched_context.table_key} "
+            f"cell={current_cell.cell_id} stable=True"
         )
-
-        if pair.selected_cell == current_cell:
-            self._apply_control_cell(
-                current_cell, reason=selection_source
+        if state.bootstrap_probes_remaining > 0 or state.probe_pending:
+            self.run_back_to_back_pair_round(
+                latched_context, current_cell, active_cell_before
             )
-        if should_offload:
-            self.policy.invoke_offload(latched_context, final_decision)
+        else:
+            self.run_current_only_round(
+                latched_context, current_cell, active_cell_before
+            )
         self.round_index += 1
 
     def stop_inference(self) -> None:
@@ -1347,7 +1415,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--camera-parameter-warn-ms", type=float, default=50.0)
     parser.add_argument("--mde-inference-warn-ms", type=float, default=100.0)
     parser.add_argument("--control-decision-warn-ms", type=float, default=500.0)
-    parser.add_argument("--probe-decision-budget-ms", type=float, default=500.0)
+    parser.add_argument("--max-pair-capture-gap-ms", type=float, default=100.0)
     parser.add_argument("--inference-poll-ms", type=float, default=10.0)
 
     parser.add_argument(
@@ -1371,6 +1439,11 @@ def parse_args() -> argparse.Namespace:
         parser.error("--context-debounce-ms must be non-negative.")
     if args.context_debounce_samples < 1:
         parser.error("--context-debounce-samples must be positive.")
+    if (
+        not math.isfinite(args.max_pair_capture_gap_ms)
+        or args.max_pair_capture_gap_ms <= 0.0
+    ):
+        parser.error("--max-pair-capture-gap-ms must be finite and positive.")
     return args
 
 
@@ -1427,7 +1500,7 @@ def main() -> int:
             camera_parameter_warn_ms=args.camera_parameter_warn_ms,
             mde_inference_warn_ms=args.mde_inference_warn_ms,
             control_decision_warn_ms=args.control_decision_warn_ms,
-            probe_decision_budget_ms=args.probe_decision_budget_ms,
+            max_pair_capture_gap_ms=args.max_pair_capture_gap_ms,
             inference_poll_ms=args.inference_poll_ms,
             evaluation_alignment=args.evaluation_alignment,
             min_depth_m=args.min_depth_m,

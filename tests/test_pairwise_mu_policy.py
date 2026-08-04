@@ -68,6 +68,7 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         experiment.default_cell = CELL_BY_ID["E04_G016"]
         experiment.last_applied_cell = last_applied_cell or experiment.default_cell
         experiment.camera = SimpleNamespace(exposure_value_per_ms=1000.0)
+        experiment.max_pair_capture_gap_ms = 100.0
         experiment.predictor = SimpleNamespace(
             predict=mock.Mock(),
             predict_batch=mock.Mock(),
@@ -75,19 +76,20 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         experiment.executor = SimpleNamespace(submit=lambda *args, **kwargs: object())
         experiment.round_index = 0
         captures: list[tuple[str, str, bool]] = []
+        events: list[str] = []
         rows: list[dict] = []
         applied: list[str] = []
         pending_initial = list(initial_scores)
         pending_challengers = list(challenger_scores or [])
-        last_initial: list[QScore] = []
 
         def capture(cell, context, role, *, apply_cell=True):
             captures.append((role, cell.cell_id, apply_cell))
+            events.append(f"capture_{role}")
             if apply_cell:
                 experiment.last_applied_cell = cell
                 applied.append(cell.cell_id)
             row = {
-                "timestamp_ns": 0,
+                "timestamp_ns": len(captures) * 1_000_000,
                 "capture_role": role,
                 "cell_id": cell.cell_id,
                 "exposure_us_model": cell.exposure_ms * 1000.0,
@@ -105,14 +107,8 @@ class PairwiseMuPolicyTest(unittest.TestCase):
             )
 
         def await_result(row, future):
-            scores = (
-                pending_initial
-                if row["capture_role"] == "initial"
-                else pending_challengers
-            )
-            observation = scores.pop(0)
-            if row["capture_role"] == "initial":
-                last_initial[:] = [observation]
+            events.append("infer_single")
+            observation = pending_initial.pop(0)
             row.update(
                 q=observation.q,
                 std=observation.uncertainty,
@@ -120,7 +116,11 @@ class PairwiseMuPolicyTest(unittest.TestCase):
             )
 
         def await_pair_result(pair_rows, future):
-            observations = [last_initial[0], pending_challengers.pop(0)]
+            events.append("infer_batch")
+            observations = [
+                pending_initial.pop(0),
+                pending_challengers.pop(0),
+            ]
             for row, observation in zip(pair_rows, observations):
                 row.update(
                     q=observation.q,
@@ -134,10 +134,10 @@ class PairwiseMuPolicyTest(unittest.TestCase):
             applied.append(cell.cell_id)
 
         experiment._capture = capture
+        experiment.events = events
         experiment._save_capture = mock.Mock()
-        experiment._await_probe_result = await_result
+        experiment._await_single_result = await_result
         experiment._await_pair_result = await_pair_result
-        experiment._probe_fits_budget = mock.Mock(return_value=True)
         experiment._finish_decision = mock.Mock()
         experiment._apply_control_cell = apply_control
         controller.invoke_offload = mock.Mock()
@@ -191,15 +191,35 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         self.assertEqual(applied, [])
         self.assertEqual(experiment.last_applied_cell, held)
 
-    def test_record_current_result_cannot_change_active_cell(self) -> None:
+    def test_current_only_result_controls_only_next_round_pending(self) -> None:
         controller = self.controller()
-        active, other = ALL_CELLS[:2]
+        active = ALL_CELLS[0]
         controller.cell_for_context(self.context, active)
+        state = controller.state_for_context(self.context)
+        state.probe_pending = False
+        state.bootstrap_probes_remaining = 0
+        experiment, captures, _, _ = self.runtime(
+            controller,
+            initial_scores=[score(0.30), score(0.30)],
+            challenger_scores=[score(0.20)],
+        )
 
-        with self.assertRaises(RuntimeError):
-            controller.record_current_result(self.context, other, 0.30)
+        self.run_runtime(experiment, rounds=2)
 
-        self.assertEqual(controller.active_cell_id(self.context), active.cell_id)
+        self.assertEqual(
+            [role for role, _, _ in captures],
+            ["initial", "initial", "probe"],
+        )
+        self.assertEqual(
+            experiment.events,
+            [
+                "capture_initial",
+                "infer_single",
+                "capture_initial",
+                "capture_probe",
+                "infer_batch",
+            ],
+        )
 
     def test_clearly_losing_challenger_stays_inactive_and_enters_cooldown(
         self,
@@ -314,6 +334,9 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["selected_mu"], 0.10)
         self.assertAlmostEqual(rows[0]["selected_std"], 0.01)
         self.assertAlmostEqual(rows[0]["offload_risk"], 0.11)
+        state = controller.state_for_context(self.context)
+        self.assertFalse(state.probe_pending)
+        self.assertEqual(state.bootstrap_probes_remaining, 0)
         controller.invoke_offload.assert_not_called()
 
     def test_offload_does_not_change_committed_cell(self) -> None:
@@ -352,34 +375,18 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         self.assertIn((first.cell_id, challenger.cell_id), first_edges)
         self.assertNotIn((first.cell_id, challenger.cell_id), second_edges)
 
-    def test_stale_initial_and_probe_results_do_not_modify_policy_state(self) -> None:
+    def test_valid_pair_updates_old_context_after_inference_context_change(
+        self,
+    ) -> None:
+        controller = self.controller(pair_uncertainty_weight=0.0)
         other_context = ContextKey(1, 0)
-
-        initial_controller = self.controller()
-        current = ALL_CELLS[0]
-        initial_controller.cell_for_context(self.context, current)
-        initial_controller.context_states[self.context.table_key].cells[
-            ALL_CELLS[-1].cell_id
-        ].cooldown = 3
-        initial_experiment, _, _, _ = self.runtime(
-            initial_controller,
-            contexts=[(self.context, True), (other_context, True)],
-            initial_scores=[score(0.30)],
-        )
-        self.run_runtime(initial_experiment)
-        initial_state = initial_controller.context_states[self.context.table_key]
-        self.assertEqual(initial_state.edges, {})
-        self.assertEqual(initial_state.cells[ALL_CELLS[-1].cell_id].cooldown, 3)
-
-        probe_controller = self.controller()
-        probe_controller.cell_for_context(self.context, current)
-        probe_controller.context_states[self.context.table_key].cells[
-            ALL_CELLS[-1].cell_id
-        ].cooldown = 3
-        probe_experiment, _, rows, _ = self.runtime(
-            probe_controller,
+        current = CELL_BY_ID["E04_G016"]
+        new_context_cell = CELL_BY_ID["E32_G128"]
+        controller.cell_for_context(self.context, current)
+        controller.cell_for_context(other_context, new_context_cell)
+        experiment, _, rows, applied = self.runtime(
+            controller,
             contexts=[
-                (self.context, True),
                 (self.context, True),
                 (self.context, True),
                 (other_context, True),
@@ -387,16 +394,65 @@ class PairwiseMuPolicyTest(unittest.TestCase):
             initial_scores=[score(0.30)],
             challenger_scores=[score(0.10)],
         )
-        self.run_runtime(probe_experiment)
-        probe_state = probe_controller.context_states[self.context.table_key]
-        self.assertEqual(probe_state.cells[ALL_CELLS[-1].cell_id].cooldown, 3)
-        self.assertEqual(probe_state.cells[ALL_CELLS[1].cell_id].cooldown, 0)
-        self.assertEqual(probe_state.active_cell_id, current.cell_id)
-        self.assertEqual(probe_state.edges, {})
-        self.assertTrue(all(row["pair_status"] == "invalid_pair" for row in rows))
-        self.assertTrue(
-            all(row["selection_source"] == "stale_pair_discarded" for row in rows)
+
+        self.run_runtime(experiment)
+
+        old_state = controller.state_for_context(self.context)
+        self.assertEqual(len(old_state.edges), 1)
+        self.assertNotEqual(old_state.active_cell_id, current.cell_id)
+        self.assertEqual(
+            controller.active_cell_id(other_context),
+            new_context_cell.cell_id,
         )
+        self.assertEqual(experiment.last_applied_cell, new_context_cell)
+        self.assertEqual(applied[-1], new_context_cell.cell_id)
+        self.assertTrue(all(row["capture_valid_pair"] == 1 for row in rows))
+        self.assertTrue(all(row["stale_for_control"] == 1 for row in rows))
+
+    def test_invalid_pair_keeps_state_and_remains_pending(self) -> None:
+        controller = self.controller()
+        other_context = ContextKey(1, 0)
+        current = CELL_BY_ID["E04_G016"]
+        controller.cell_for_context(self.context, current)
+        experiment, _, rows, _ = self.runtime(
+            controller,
+            contexts=[
+                (self.context, True),
+                (other_context, True),
+                (other_context, True),
+            ],
+            initial_scores=[score(0.30)],
+            challenger_scores=[score(0.10)],
+        )
+
+        self.run_runtime(experiment)
+
+        state = controller.state_for_context(self.context)
+        self.assertEqual(state.active_cell_id, current.cell_id)
+        self.assertEqual(state.edges, {})
+        self.assertTrue(state.probe_pending)
+        self.assertEqual(state.bootstrap_probes_remaining, 1)
+        self.assertTrue(all(row["capture_valid_pair"] == 0 for row in rows))
+        self.assertTrue(all(row["pair_status"] == "invalid_pair" for row in rows))
+
+    def test_pair_over_capture_gap_limit_is_invalid(self) -> None:
+        controller = self.controller()
+        current = CELL_BY_ID["E04_G016"]
+        controller.cell_for_context(self.context, current)
+        experiment, _, rows, _ = self.runtime(
+            controller,
+            initial_scores=[score(0.30)],
+            challenger_scores=[score(0.10)],
+        )
+        experiment.max_pair_capture_gap_ms = 0.5
+
+        self.run_runtime(experiment)
+
+        state = controller.state_for_context(self.context)
+        self.assertEqual(state.edges, {})
+        self.assertTrue(state.probe_pending)
+        self.assertTrue(all(row["pair_capture_gap_ms"] == 1.0 for row in rows))
+        self.assertTrue(all(row["capture_valid_pair"] == 0 for row in rows))
 
     def test_unobserved_challengers_follow_grid_diverse_order(self) -> None:
         controller = self.controller()
@@ -438,7 +494,39 @@ class PairwiseMuPolicyTest(unittest.TestCase):
         roles = [role for role, _, _ in captures]
         self.assertEqual(roles.count("initial"), 1)
         self.assertEqual(roles.count("probe"), 1)
+        self.assertEqual(
+            experiment.events,
+            ["capture_initial", "capture_probe", "infer_batch"],
+        )
         self.assertTrue(all(row["mde_batch_size"] == 2 for row in rows))
+        self.assertTrue(all(row["initial_inference_count"] == 1 for row in rows))
+
+    def test_challenger_is_selected_before_current_capture(self) -> None:
+        controller = self.controller()
+        experiment, _, _, _ = self.runtime(
+            controller,
+            initial_scores=[score(0.30)],
+            challenger_scores=[score(0.20)],
+        )
+        original = controller.select_challenger
+
+        def select_challenger(context, current):
+            experiment.events.append("select_challenger")
+            return original(context, current)
+
+        controller.select_challenger = mock.Mock(side_effect=select_challenger)
+
+        self.run_runtime(experiment)
+
+        self.assertEqual(
+            experiment.events,
+            [
+                "select_challenger",
+                "capture_initial",
+                "capture_probe",
+                "infer_batch",
+            ],
+        )
 
 
 if __name__ == "__main__":

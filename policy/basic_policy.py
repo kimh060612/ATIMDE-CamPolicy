@@ -227,14 +227,14 @@ class ATIMDECameraProbingController:
             raise ValueError("Observed std must be finite and non-negative.")
         return float(std)
 
-    def _state_for(self, context: ContextKey) -> ContextState:
+    def state_for_context(self, context: ContextKey) -> ContextState:
         context.validate()
         return self.context_states.setdefault(context.table_key, ContextState())
 
     def cell_for_context(
         self, context: ContextKey, fallback: SensorCell
     ) -> SensorCell:
-        state = self._state_for(context)
+        state = self.state_for_context(context)
         safe_cells = self.safety_policy.safe_cells(context)
         if state.active_cell_id is None:
             selected = fallback if fallback in safe_cells else safe_cells[0]
@@ -258,21 +258,10 @@ class ATIMDECameraProbingController:
             return CELL_BY_ID[state.active_cell_id]
         return fallback if fallback in safe_cells else safe_cells[0]
 
-    def record_current_result(
-        self,
-        context: ContextKey,
-        current: SensorCell,
-        current_mu: float,
-    ) -> bool:
-        state = self._state_for(context)
-        if state.active_cell_id != current.cell_id:
-            raise RuntimeError("Current cell is not the committed context cell.")
-        return self._finite_mu(current_mu) > self.probe_trigger_threshold
-
     def select_challenger(
         self, context: ContextKey, current: SensorCell
     ) -> Optional[SensorCell]:
-        state = self._state_for(context)
+        state = self.state_for_context(context)
         candidates = [
             cell
             for cell in self.safety_policy.safe_cells(context)
@@ -310,7 +299,7 @@ class ATIMDECameraProbingController:
         challenger_mu: float,
         challenger_std: float,
     ) -> PairwiseResult:
-        state = self._state_for(context)
+        state = self.state_for_context(context)
         if state.active_cell_id != current.cell_id:
             raise RuntimeError("Current cell is not the committed context cell.")
         current_mu = self._finite_mu(current_mu)
@@ -378,7 +367,7 @@ class ATIMDECameraProbingController:
         return should_offload, risk
 
     def complete_round(self, context: ContextKey) -> None:
-        for stats in self._state_for(context).cells.values():
+        for stats in self.state_for_context(context).cells.values():
             stats.cooldown = max(stats.cooldown - 1, 0)
 
     def active_cell_id(self, context: ContextKey) -> Optional[str]:
@@ -386,7 +375,7 @@ class ATIMDECameraProbingController:
         return state.active_cell_id if state is not None else None
 
     def challenger_cooldown(self, context: ContextKey, cell: SensorCell) -> int:
-        return self._state_for(context).cells[cell.cell_id].cooldown
+        return self.state_for_context(context).cells[cell.cell_id].cooldown
 
     def invoke_offload(self, context: ContextKey, decision: PolicyDecision) -> None:
         print(

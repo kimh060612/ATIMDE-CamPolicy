@@ -85,6 +85,8 @@ class EdgeStats:
 @dataclass
 class ContextState:
     active_cell_id: Optional[str] = None
+    probe_pending: bool = True
+    bootstrap_probes_remaining: int = 1
     cells: dict[str, CellStats] = field(
         default_factory=lambda: {
             cell.cell_id: CellStats() for cell in ALL_CELLS
