@@ -1,0 +1,1 @@
+"""Local pairwise camera control."""

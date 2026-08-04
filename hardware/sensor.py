@@ -73,6 +73,7 @@ class OrbbecColorCamera:
         self.exposure_value_per_ms = exposure_value_per_ms
         self.settle_frames = settle_frames
         self.frame_timeout_ms = frame_timeout_ms
+        self.frame_sequence: Optional[int] = None
         self.pipeline = Pipeline()
         self.align_filter = AlignFilter(align_to_stream=OBStreamType.COLOR_STREAM)
 
@@ -289,6 +290,11 @@ class OrbbecColorCamera:
             depth_frame = aligned.get_depth_frame()
             if color_frame is None or depth_frame is None:
                 continue
+
+            try:
+                self.frame_sequence = int(color_frame.get_frame_number())
+            except (AttributeError, TypeError, ValueError):
+                self.frame_sequence = None
 
             image = frame_to_bgr_image(color_frame)
             if image is None or image.size == 0:
