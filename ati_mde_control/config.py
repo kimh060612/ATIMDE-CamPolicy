@@ -75,6 +75,9 @@ class PolicyConfig:
     max_consecutive_invalid_pairs: int = 3
     recovery_current_only_rounds: int = 2
     periodic_reprobe_interval: int = 30
+    max_pending_observations: int = 2
+    pending_timeout_rounds: int = 5
+    pending_std_floor: float = 1e-4
     initial_search_axis: SearchAxis = SearchAxis.EXPOSURE
     offload_uncertainty_weight: float = 1.0
     offload_threshold: float = 0.15
@@ -90,8 +93,13 @@ class PolicyConfig:
             self.max_consecutive_invalid_pairs,
             self.recovery_current_only_rounds,
             self.periodic_reprobe_interval,
+            self.pending_timeout_rounds,
         ) < 1:
             raise ValueError("Cooldown, recovery, and periodic counts must be positive.")
+        if self.max_pending_observations < 2:
+            raise ValueError("Pending evidence requires at least two observations.")
+        if not math.isfinite(self.pending_std_floor) or self.pending_std_floor <= 0:
+            raise ValueError("Pending std floor must be finite and positive.")
         values = (
             self.probe_trigger_threshold,
             self.switch_margin,
@@ -146,6 +154,9 @@ class ExperimentConfig:
                 max_consecutive_invalid_pairs=args.max_consecutive_invalid_pairs,
                 recovery_current_only_rounds=args.recovery_current_only_rounds,
                 periodic_reprobe_interval=args.periodic_reprobe_interval,
+                max_pending_observations=args.max_pending_observations,
+                pending_timeout_rounds=args.pending_timeout_rounds,
+                pending_std_floor=args.pending_std_floor,
                 initial_search_axis=SearchAxis(args.initial_search_axis),
                 offload_uncertainty_weight=args.offload_uncertainty_weight,
                 offload_threshold=args.offload_threshold,
@@ -183,6 +194,9 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-consecutive-invalid-pairs", type=int, default=3)
     parser.add_argument("--recovery-current-only-rounds", type=int, default=2)
     parser.add_argument("--periodic-reprobe-interval", type=int, default=30)
+    parser.add_argument("--max-pending-observations", type=int, default=2)
+    parser.add_argument("--pending-timeout-rounds", type=int, default=5)
+    parser.add_argument("--pending-std-floor", type=float, default=1e-4)
     parser.add_argument("--initial-search-axis", choices=("exposure", "gain"), default="exposure")
     parser.add_argument("--offload-uncertainty-weight", type=float, default=1.0)
     parser.add_argument("--offload-threshold", type=float, default=0.15)
@@ -222,10 +236,15 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     positive = (
         "invalid_edge_cooldown_rounds", "ambiguous_edge_cooldown_rounds",
         "max_consecutive_invalid_pairs", "recovery_current_only_rounds",
-        "periodic_reprobe_interval", "context_debounce_samples", "min_valid_depth_pixels",
+        "periodic_reprobe_interval", "pending_timeout_rounds",
+        "context_debounce_samples", "min_valid_depth_pixels",
     )
     if any(getattr(args, name) < 1 for name in positive):
         parser.error("Cooldown, recovery, periodic, debounce, and pixel counts must be positive.")
+    if args.max_pending_observations < 2:
+        parser.error("--max-pending-observations must be at least 2.")
+    if not math.isfinite(args.pending_std_floor) or args.pending_std_floor <= 0:
+        parser.error("--pending-std-floor must be finite and positive.")
     if not 1 <= args.max_rounds <= 400:
         parser.error("--max-rounds must be between 1 and 400.")
     if args.round_interval_ms < 0 or args.context_debounce_ms < 0:

@@ -1,0 +1,173 @@
+import unittest
+
+from ati_mde_control.config import PolicyConfig, SafetyPolicy
+from ati_mde_control.pairwise_policy import PairwisePolicy
+from ati_mde_control.types import PairMode, PairStatus, SwitchEvent
+from hardware.utils import ContextKey, QScore, SensorCell
+
+
+def score(mu: float, std: float) -> QScore:
+    return QScore(mu, std, mu)
+
+
+class PendingEvidenceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.context = ContextKey(0, 0)
+        self.current = SensorCell(16, 64)
+        self.challenger = SensorCell(8, 64)
+
+    def policy(self, **values) -> PairwisePolicy:
+        policy = PairwisePolicy(PolicyConfig(**values), SafetyPolicy())
+        policy.committed_cell(self.context, self.current)
+        self.assertEqual(policy.select_challenger(self.context, self.current), self.challenger)
+        return policy
+
+    def resolve(self, policy, delta, std, round_index=0):
+        return policy.resolve(
+            self.context,
+            self.current,
+            score(.1 + delta, std),
+            self.challenger,
+            score(.1, std),
+            round_index,
+        )
+
+    def test_high_confidence_win_commits_immediately_without_pending(self) -> None:
+        policy = self.policy()
+        decision = self.resolve(policy, .1, .01)
+        state = policy.state(self.context)
+        self.assertEqual(decision.status, PairStatus.CHALLENGER_WON)
+        self.assertEqual(decision.switch_event, SwitchEvent.IMMEDIATE_COMMIT)
+        self.assertEqual(state.active_cell_id, self.challenger.cell_id)
+        self.assertIsNone(state.pending_edge_from_id)
+
+    def test_positive_uncertain_result_starts_pending_and_keeps_current(self) -> None:
+        policy = self.policy()
+        decision = self.resolve(policy, .013, .01)
+        state = policy.state(self.context)
+        self.assertEqual(decision.status, PairStatus.AMBIGUOUS)
+        self.assertEqual(decision.switch_event, SwitchEvent.PENDING_STARTED)
+        self.assertEqual(decision.selected_cell, self.current)
+        self.assertEqual(state.active_cell_id, self.current.cell_id)
+        self.assertEqual(state.pending_edge_to_id, self.challenger.cell_id)
+
+    def test_weak_nonpositive_ambiguity_does_not_start_pending(self) -> None:
+        policy = self.policy()
+        decision = self.resolve(policy, -.005, .01)
+        edge = policy.state(self.context).local_edges[(self.current.cell_id, self.challenger.cell_id)]
+        self.assertEqual(decision.switch_event, SwitchEvent.NONE)
+        self.assertFalse(edge.pending)
+        self.assertGreater(edge.ambiguous_cooldown, 0)
+
+    def test_pending_edge_has_priority(self) -> None:
+        policy = self.policy()
+        self.resolve(policy, .013, .01)
+        self.assertEqual(policy.select_challenger(self.context, self.current), self.challenger)
+
+    def test_lower_sigma_contributes_more_precision(self) -> None:
+        policy = self.policy(max_pending_observations=3)
+        high_sigma = self.resolve(policy, .005, .03)
+        low_sigma = self.resolve(policy, .005, .005, 1)
+        low_sigma_weight = low_sigma.pending_precision_sum - high_sigma.pending_precision_sum
+        self.assertGreater(low_sigma_weight, high_sigma.pending_precision_sum)
+
+    def test_two_consistent_uncertain_observations_commit(self) -> None:
+        policy = self.policy()
+        self.resolve(policy, .013, .01)
+        decision = self.resolve(policy, .013, .01, 1)
+        self.assertEqual(decision.pair_mode, PairMode.PENDING_RECHECK)
+        self.assertEqual(decision.status, PairStatus.AMBIGUOUS)
+        self.assertEqual(decision.switch_event, SwitchEvent.PENDING_COMMITTED)
+        self.assertEqual(decision.pending_observation_count, 2)
+        self.assertEqual(policy.state(self.context).active_cell_id, self.challenger.cell_id)
+
+    def test_aggregated_current_superiority_rejects_pending_edge(self) -> None:
+        policy = self.policy(max_pending_observations=4)
+        self.resolve(policy, .005, .03)
+        self.resolve(policy, -.0117, .005, 1)
+        decision = self.resolve(policy, -.0117, .005, 2)
+        state = policy.state(self.context)
+        self.assertEqual(decision.switch_event, SwitchEvent.PENDING_REJECTED)
+        self.assertEqual(state.active_cell_id, self.current.cell_id)
+        self.assertTrue(state.exposure_negative_tested)
+        self.assertIsNone(state.pending_edge_from_id)
+
+    def test_pending_exhaustion_keeps_current_and_closes_direction(self) -> None:
+        policy = self.policy()
+        self.resolve(policy, .005, .02)
+        decision = self.resolve(policy, .005, .02, 1)
+        state = policy.state(self.context)
+        self.assertEqual(decision.switch_event, SwitchEvent.PENDING_EXHAUSTED)
+        self.assertEqual(state.active_cell_id, self.current.cell_id)
+        self.assertTrue(state.exposure_negative_tested)
+        self.assertIsNone(state.pending_edge_from_id)
+
+    def test_pending_timeout_keeps_current_and_resumes_search(self) -> None:
+        policy = self.policy()
+        self.resolve(policy, .005, .02)
+        event = policy.begin_round(self.context, 5)
+        state = policy.state(self.context)
+        self.assertEqual(event, SwitchEvent.PENDING_TIMEOUT)
+        self.assertEqual(state.active_cell_id, self.current.cell_id)
+        self.assertTrue(state.exposure_negative_tested)
+        self.assertIsNone(state.pending_edge_from_id)
+        self.assertTrue(state.probe_pending)
+
+    def test_invalid_pending_pair_preserves_evidence_and_pending_state(self) -> None:
+        policy = self.policy(invalid_edge_cooldown_rounds=2)
+        decision = self.resolve(policy, .005, .02)
+        edge = policy.state(self.context).local_edges[(self.current.cell_id, self.challenger.cell_id)]
+        before = (
+            edge.pending_weighted_delta_sum,
+            edge.pending_precision_sum,
+            edge.pending_observation_count,
+        )
+        policy.record_invalid(self.context, self.current, self.challenger, 1)
+        self.assertEqual(before, (
+            edge.pending_weighted_delta_sum,
+            edge.pending_precision_sum,
+            edge.pending_observation_count,
+        ))
+        self.assertTrue(edge.pending)
+        self.assertEqual(policy.state(self.context).pending_edge_to_id, self.challenger.cell_id)
+        self.assertEqual(decision.pending_observation_count, 1)
+        policy.begin_round(self.context, 2)
+        self.assertIsNone(policy.select_challenger(self.context, self.current))
+        policy.begin_round(self.context, 3)
+        self.assertEqual(policy.select_challenger(self.context, self.current), self.challenger)
+
+    def test_pending_state_is_context_specific(self) -> None:
+        policy = self.policy()
+        self.resolve(policy, .005, .02)
+        other = ContextKey(1, 0)
+        policy.committed_cell(other, self.current)
+        other_challenger = policy.select_challenger(other, self.current)
+        decision = policy.resolve(
+            other, self.current, score(.2, .01), other_challenger, score(.1, .01), 1
+        )
+        self.assertEqual(decision.switch_event, SwitchEvent.IMMEDIATE_COMMIT)
+        self.assertEqual(policy.state(other).active_cell_id, other_challenger.cell_id)
+        self.assertEqual(policy.state(self.context).pending_edge_to_id, self.challenger.cell_id)
+
+    def test_commit_continues_forward_without_dwell_or_rollback(self) -> None:
+        policy = self.policy()
+        self.resolve(policy, .1, .01)
+        self.assertEqual(
+            policy.select_challenger(self.context, self.challenger), SensorCell(4, 64)
+        )
+        self.assertEqual(
+            set(PairMode), {PairMode.NORMAL_SEARCH, PairMode.PENDING_RECHECK}
+        )
+
+    def test_pending_configuration_is_bounded(self) -> None:
+        config = PolicyConfig()
+        self.assertEqual((config.max_pending_observations, config.pending_timeout_rounds), (2, 5))
+        self.assertEqual(config.pending_std_floor, 1e-4)
+        with self.assertRaises(ValueError):
+            PolicyConfig(max_pending_observations=1)
+        with self.assertRaises(ValueError):
+            PolicyConfig(pending_std_floor=0)
+
+
+if __name__ == "__main__":
+    unittest.main()

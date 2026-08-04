@@ -143,7 +143,7 @@ class ExperimentTest(unittest.TestCase):
         line = output.getvalue()
         self.assertIn("active=E08_G064 E=8ms G=64", line)
         self.assertIn("search=exposure/negative", line)
-        self.assertIn("decision=challenger_won flow=pairwise", line)
+        self.assertIn("decision=challenger_won/immediate_commit flow=normal_search", line)
         self.assertNotIn("abs_rel", line.lower())
         self.assertNotIn("absrel", line.lower())
         self.assertNotIn("a1=", line.lower())
@@ -162,6 +162,15 @@ class ExperimentTest(unittest.TestCase):
         runtime, _, _, predictor, _, _ = experiment()
         runtime.run_round()
         self.assertEqual(predictor.batch_sizes, [2])
+        self.assertEqual(predictor.single_calls, 0)
+
+    def test_immediate_commit_changes_next_initial_frame_without_dwell(self) -> None:
+        runtime, _, _, predictor, _, _ = experiment()
+        runtime.run_round()
+        result = runtime.run_round()
+        self.assertEqual(result.initial.cell, SensorCell(8, 64))
+        self.assertEqual(result.challenger.cell, SensorCell(4, 64))
+        self.assertEqual(predictor.batch_sizes, [2, 2])
         self.assertEqual(predictor.single_calls, 0)
 
     def test_every_round_delivers_initial_frame(self) -> None:
@@ -218,6 +227,36 @@ class ExperimentTest(unittest.TestCase):
         self.assertEqual(summary["abs_rel"], .20)
         self.assertEqual(summary["a1"], .7)
         self.assertEqual(summary["output_coverage"], 1.0)
+
+    def test_summary_counts_only_commit_events_as_switches(self) -> None:
+        logger = CaptureLogger.__new__(CaptureLogger)
+        logger.rows = []
+        for round_index, status, event, observations in (
+            (0, "ambiguous", "pending_started", 1),
+            (1, "ambiguous", "pending_committed", 2),
+            (2, "challenger_won", "immediate_commit", ""),
+        ):
+            for role, delivered in (("initial", 1), ("challenger", 0)):
+                logger.rows.append({
+                    "round_index": round_index,
+                    "capture_role": role,
+                    "output_delivered": delivered,
+                    "pair_status": status,
+                    "switch_event": event,
+                    "pending_observation_count": observations,
+                    "capture_valid_pair": 1,
+                    "abs_rel": .1,
+                    "a1": .9,
+                    "cell_id": "E16_G064",
+                    "control_decision_delay_ms": 1,
+                    "pair_capture_gap_ms": 5,
+                    "timestamp_ns": round_index * 2 + delivered,
+                })
+        summary = logger._summary()
+        self.assertEqual(summary["switch_count"], 2)
+        self.assertEqual(summary["pending_started_count"], 1)
+        self.assertEqual(summary["pending_committed_count"], 1)
+        self.assertEqual(summary["mean_pending_observation_count"], 1.5)
 
 
 if __name__ == "__main__":

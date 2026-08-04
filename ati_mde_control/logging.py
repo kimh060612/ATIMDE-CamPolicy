@@ -23,11 +23,17 @@ CSV_FIELDS = (
     "actual_exposure_raw", "actual_gain", "active_cell_before", "active_cell_after",
     "search_axis", "search_direction", "search_cycle_complete", "cycle_had_switch",
     "probe_pending_before", "probe_pending_after", "rounds_since_valid_probe",
-    "challenger_cell_id", "pair_status", "delta_mu", "pair_std", "effective_margin",
+    "challenger_cell_id", "pair_status", "pair_mode", "switch_event",
+    "delta_mu", "pair_std", "effective_margin",
     "pair_capture_gap_ms", "capture_valid_pair", "pair_invalid_reason",
     "edge_valid_count", "edge_invalid_count", "edge_invalid_cooldown",
     "edge_ambiguous_count", "edge_ambiguous_cooldown", "consecutive_invalid_pairs",
-    "force_current_only_rounds", "forced_current_only", "camera_bias", "std", "q",
+    "force_current_only_rounds", "forced_current_only",
+    "pending_edge_from_id", "pending_edge_to_id", "pending_observation_count",
+    "max_pending_observations", "pending_age_rounds", "pending_weighted_delta_sum",
+    "pending_precision_sum", "aggregated_delta_mu", "aggregated_pair_std",
+    "aggregated_effective_margin", "immediate_commit", "pending_commit",
+    "pending_timeout", "camera_bias", "std", "q",
     "mde_batch_size", "mde_inference_ms", "camera_parameter_ms",
     "control_decision_delay_ms", "offload_risk", "offload_requested", "selected",
     "initial_inference_count",
@@ -36,6 +42,8 @@ CSV_FIELDS = (
     "invalid_pair_rate", "ambiguous_pair_rate", "switch_count", "switch_precision",
     "harmful_switch_rate", "parameter_occupancy", "mean_decision_latency_ms",
     "pair_gap_p50_ms", "pair_gap_p95_ms", "effective_output_rate_hz", "output_coverage",
+    "pending_started_count", "pending_committed_count", "pending_rejected_count",
+    "pending_exhausted_count", "pending_timeout_count", "mean_pending_observation_count",
 )
 
 
@@ -108,7 +116,10 @@ class CaptureLogger:
         probes = [row for row in self.rows if row["capture_role"] == "challenger"]
         pair_rows = [row for row in initial if row["pair_status"] not in ("", "not_probed")]
         valid = [row for row in pair_rows if row["capture_valid_pair"] == 1]
-        switched = [row for row in valid if row["pair_status"] == "challenger_won"]
+        switched = [
+            row for row in valid
+            if row.get("switch_event") in ("immediate_commit", "pending_committed")
+        ]
         comparisons = []
         for row in switched:
             probe = next((item for item in probes if item["round_index"] == row["round_index"]), None)
@@ -121,6 +132,16 @@ class CaptureLogger:
         rate = lambda count, total: count / total if total else 0.0
         primary_abs_rel = [float(row["abs_rel"]) for row in initial if row["abs_rel"] != ""]
         primary_a1 = [float(row["a1"]) for row in initial if row["a1"] != ""]
+        pending_counts = [
+            float(row["pending_observation_count"])
+            for row in initial
+            if row.get("switch_event") in (
+                "pending_started", "pending_updated", "pending_committed",
+                "pending_rejected", "pending_exhausted",
+            )
+            and row.get("pending_observation_count", "") != ""
+        ]
+        event_count = lambda event: sum(row.get("switch_event") == event for row in initial)
         return {
             "capture_index": len(self.rows),
             "abs_rel": mean(primary_abs_rel),
@@ -138,4 +159,10 @@ class CaptureLogger:
             "pair_gap_p95_ms": float(np.percentile(gaps, 95)) if gaps.size else "",
             "effective_output_rate_hz": (len(initial) - 1) / duration if duration > 0 else "",
             "output_coverage": rate(len(initial), len({row["round_index"] for row in self.rows})),
+            "pending_started_count": event_count("pending_started"),
+            "pending_committed_count": event_count("pending_committed"),
+            "pending_rejected_count": event_count("pending_rejected"),
+            "pending_exhausted_count": event_count("pending_exhausted"),
+            "pending_timeout_count": event_count("pending_timeout"),
+            "mean_pending_observation_count": mean(pending_counts),
         }

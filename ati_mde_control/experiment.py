@@ -11,7 +11,7 @@ from .evaluation import DepthEvaluator
 from .logging import CaptureLogger
 from .pairwise_policy import PairwisePolicy
 from .state import ContextState
-from .types import PairStatus, PairwiseDecision, RoundResult
+from .types import PairMode, PairStatus, PairwiseDecision, RoundResult, SwitchEvent
 
 
 class Predictor(Protocol):
@@ -46,10 +46,16 @@ class CameraControlExperiment:
         else:
             current = self.policy.committed_cell(context, self.config.default_cell)
             state = self.policy.state(context)
-            self.policy.begin_round(context)
+            round_event = self.policy.begin_round(context, self.round_index)
             if state.force_current_only_rounds:
-                result = self._current_only(context, current, True, "invalid_pair_recovery")
-            elif state.probe_pending:
+                result = self._current_only(
+                    context, current, True, "invalid_pair_recovery", round_event
+                )
+            elif round_event is SwitchEvent.PENDING_TIMEOUT:
+                result = self._current_only(
+                    context, current, False, round_event.value, round_event
+                )
+            elif state.pending_edge_from_id or state.probe_pending:
                 result = self._pair_round(context, current)
             else:
                 result = self._current_only(context, current, False, "current_only")
@@ -62,6 +68,7 @@ class CameraControlExperiment:
         current: SensorCell,
         forced: bool,
         reason: str,
+        switch_event: SwitchEvent = SwitchEvent.NONE,
     ) -> RoundResult:
         state = self.policy.state(context)
         active_before = state.active_cell_id or current.cell_id
@@ -91,6 +98,11 @@ class CameraControlExperiment:
         values = self._state_values(state, active_before, pending_before)
         values.update(
             pair_status=PairStatus.NOT_PROBED.value,
+            pair_mode="",
+            switch_event=switch_event.value,
+            immediate_commit=0,
+            pending_commit=0,
+            pending_timeout=int(switch_event is SwitchEvent.PENDING_TIMEOUT),
             forced_current_only=int(forced),
             selected=1,
             offload_risk=risk,
@@ -99,7 +111,8 @@ class CameraControlExperiment:
         )
         self.logger.record(frame, score, values)
         self._print_round(
-            context, state, current, None, current, PairStatus.NOT_PROBED, reason
+            context, state, current, None, current, PairStatus.NOT_PROBED,
+            None, switch_event, reason,
         )
         self._warn(frame.camera_parameter_ms, float(score.extra.get("mde_inference_ms", 0)), values["control_decision_delay_ms"])
         return RoundResult(frame, score, offload_requested=requested, reason=reason)
@@ -110,8 +123,18 @@ class CameraControlExperiment:
         pending_before = state.probe_pending
         challenger = self.policy.select_challenger(context, current)
         if challenger is None:
-            reason = "search_complete" if state.search_cycle_complete else "local_edges_cooling_down"
+            reason = (
+                "pending_edge_cooldown" if state.pending_edge_from_id
+                else "search_complete" if state.search_cycle_complete
+                else "local_edges_cooling_down"
+            )
             return self._current_only(context, current, False, reason)
+        pair_mode = (
+            PairMode.PENDING_RECHECK
+            if state.pending_edge_from_id == current.cell_id
+            and state.pending_edge_to_id == challenger.cell_id
+            else PairMode.NORMAL_SEARCH
+        )
 
         pair = self.capture_runner.capture_pair(current, challenger, context, self.round_index)
         self.last_applied_cell = challenger
@@ -131,13 +154,16 @@ class CameraControlExperiment:
         edge_key = (current.cell_id, challenger.cell_id)
         if pair.valid:
             decision = self.policy.resolve(
-                context, current, current_score, challenger, challenger_score, self.round_index
+                context, current, current_score, challenger, challenger_score,
+                self.round_index, pair_mode,
             )
             selected_score = challenger_score if decision.selected_cell == challenger else current_score
             requested, risk = self.policy.offload(context, decision.selected_cell, selected_score, decision.status)
         else:
             self.policy.record_invalid(context, current, challenger, self.round_index)
-            decision = PairwiseDecision(PairStatus.INVALID_PAIR, current, 0.0, 0.0, 0.0)
+            decision = PairwiseDecision(
+                PairStatus.INVALID_PAIR, current, 0.0, 0.0, 0.0, pair_mode
+            )
             selected_score, requested = current_score, False
             risk = float(current_score.mu) + self.config.policy.offload_uncertainty_weight * float(current_score.uncertainty)
 
@@ -148,6 +174,8 @@ class CameraControlExperiment:
         common.update(
             challenger_cell_id=challenger.cell_id,
             pair_status=decision.status.value,
+            pair_mode=decision.pair_mode.value,
+            switch_event=decision.switch_event.value,
             delta_mu=decision.delta_mu if pair.valid else "",
             pair_std=decision.pair_std if pair.valid else "",
             effective_margin=decision.effective_margin if pair.valid else "",
@@ -159,9 +187,24 @@ class CameraControlExperiment:
             edge_invalid_cooldown=edge.invalid_cooldown,
             edge_ambiguous_count=edge.ambiguous_count,
             edge_ambiguous_cooldown=edge.ambiguous_cooldown,
+            immediate_commit=int(decision.switch_event is SwitchEvent.IMMEDIATE_COMMIT),
+            pending_commit=int(decision.switch_event is SwitchEvent.PENDING_COMMITTED),
+            pending_timeout=0,
             offload_risk=risk,
             offload_requested=int(requested),
         )
+        if pair.valid and decision.aggregated_delta_mu is not None:
+            common.update(
+                pending_edge_from_id=current.cell_id,
+                pending_edge_to_id=challenger.cell_id,
+                pending_observation_count=decision.pending_observation_count,
+                pending_age_rounds=decision.pending_age_rounds,
+                pending_weighted_delta_sum=decision.pending_weighted_delta_sum,
+                pending_precision_sum=decision.pending_precision_sum,
+                aggregated_delta_mu=decision.aggregated_delta_mu,
+                aggregated_pair_std=decision.aggregated_pair_std,
+                aggregated_effective_margin=decision.aggregated_effective_margin,
+            )
         for frame, score in zip((pair.current, pair.challenger), scores):
             values = dict(common)
             values.update(
@@ -172,7 +215,8 @@ class CameraControlExperiment:
             self._warn(frame.camera_parameter_ms, float(score.extra.get("mde_inference_ms", 0)), values["control_decision_delay_ms"])
         self._print_round(
             context, state, current, challenger, decision.selected_cell,
-            decision.status, "pairwise",
+            decision.status, decision.pair_mode, decision.switch_event,
+            decision.pair_mode.value,
         )
         return RoundResult(
             pair.current,
@@ -201,10 +245,13 @@ class CameraControlExperiment:
             self.capture_runner.camera.apply_cell(target)
             self.last_applied_cell = target
 
-    @staticmethod
     def _state_values(
-        state: ContextState, active_before: str, pending_before: bool
+        self, state: ContextState, active_before: str, pending_before: bool
     ) -> dict[str, Any]:
+        key = (state.pending_edge_from_id or "", state.pending_edge_to_id or "")
+        edge = state.local_edges.get(key)
+        precision = edge.pending_precision_sum if edge and edge.pending else 0.0
+        aggregate_std = precision ** -0.5 if precision else ""
         return {
             "active_cell_before": active_before,
             "active_cell_after": state.active_cell_id or active_before,
@@ -217,6 +264,25 @@ class CameraControlExperiment:
             "rounds_since_valid_probe": state.rounds_since_valid_probe,
             "consecutive_invalid_pairs": state.consecutive_invalid_pairs,
             "force_current_only_rounds": state.force_current_only_rounds,
+            "pending_edge_from_id": state.pending_edge_from_id or "",
+            "pending_edge_to_id": state.pending_edge_to_id or "",
+            "pending_observation_count": edge.pending_observation_count if edge and edge.pending else 0,
+            "max_pending_observations": self.config.policy.max_pending_observations,
+            "pending_age_rounds": (
+                self.round_index - edge.pending_started_round
+                if edge and edge.pending_started_round is not None else ""
+            ),
+            "pending_weighted_delta_sum": edge.pending_weighted_delta_sum if edge and edge.pending else "",
+            "pending_precision_sum": precision or "",
+            "aggregated_delta_mu": (
+                edge.pending_weighted_delta_sum / precision if precision else ""
+            ),
+            "aggregated_pair_std": aggregate_std,
+            "aggregated_effective_margin": (
+                self.config.policy.switch_margin
+                + self.config.policy.pair_uncertainty_weight * aggregate_std
+                if precision else ""
+            ),
         }
 
     def _warn(self, camera_ms: float, inference_ms: float, decision_ms: float) -> None:
@@ -236,6 +302,8 @@ class CameraControlExperiment:
         challenger: SensorCell | None,
         selected: SensorCell,
         status: PairStatus,
+        mode: PairMode | None,
+        event: SwitchEvent,
         reason: str,
     ) -> None:
         active = CELL_BY_ID.get(state.active_cell_id or "", current)
@@ -245,7 +313,8 @@ class CameraControlExperiment:
             f"[Control] round={self.round_index} ctx={context.table_key} "
             f"active={active.cell_id} E={active.exposure_ms}ms G={active.gain} "
             f"search={state.search_axis.value}/{direction} pair={pair} "
-            f"selected={selected.cell_id} decision={status.value} flow={reason}"
+            f"selected={selected.cell_id} decision={status.value}/{event.value} "
+            f"flow={mode.value if mode else reason}"
         )
 
     def finalize(self) -> Any:

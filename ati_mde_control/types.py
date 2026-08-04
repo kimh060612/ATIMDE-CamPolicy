@@ -27,6 +27,22 @@ class PairStatus(str, Enum):
     NOT_PROBED = "not_probed"
 
 
+class PairMode(str, Enum):
+    NORMAL_SEARCH = "normal_search"
+    PENDING_RECHECK = "pending_recheck"
+
+
+class SwitchEvent(str, Enum):
+    NONE = "none"
+    IMMEDIATE_COMMIT = "immediate_commit"
+    PENDING_STARTED = "pending_started"
+    PENDING_UPDATED = "pending_updated"
+    PENDING_COMMITTED = "pending_committed"
+    PENDING_REJECTED = "pending_rejected"
+    PENDING_EXHAUSTED = "pending_exhausted"
+    PENDING_TIMEOUT = "pending_timeout"
+
+
 @dataclass(frozen=True)
 class CapturedFrame:
     round_index: int
@@ -63,6 +79,15 @@ class PairwiseDecision:
     delta_mu: float
     pair_std: float
     effective_margin: float
+    pair_mode: PairMode = PairMode.NORMAL_SEARCH
+    switch_event: SwitchEvent = SwitchEvent.NONE
+    pending_observation_count: int = 0
+    pending_weighted_delta_sum: float = 0.0
+    pending_precision_sum: float = 0.0
+    aggregated_delta_mu: float | None = None
+    aggregated_pair_std: float | None = None
+    aggregated_effective_margin: float | None = None
+    pending_age_rounds: int | None = None
 
 
 @dataclass(frozen=True)
