@@ -31,8 +31,32 @@ class ContextState:
     rounds_since_valid_probe: int = 0
     consecutive_invalid_pairs: int = 0
     force_current_only_rounds: int = 0
+    pending_switch_from_id: str | None = None
+    pending_switch_to_id: str | None = None
+    pending_switch_wins: int = 0
+    pending_switch_started_round: int | None = None
+    pending_switch_axis: SearchAxis | None = None
+    pending_switch_direction: SearchDirection | None = None
+    rollback_cell_id: str | None = None
+    rollback_verification_pending: bool = False
+    post_switch_dwell_remaining: int = 0
+    rollback_verification_started_round: int | None = None
     exposure_recheck: bool = False
     local_edges: dict[tuple[str, str], LocalEdgeState] = field(default_factory=dict)
+
+    def clear_pending_switch(self) -> None:
+        self.pending_switch_from_id = None
+        self.pending_switch_to_id = None
+        self.pending_switch_wins = 0
+        self.pending_switch_started_round = None
+        self.pending_switch_axis = None
+        self.pending_switch_direction = None
+
+    def clear_rollback(self) -> None:
+        self.rollback_cell_id = None
+        self.rollback_verification_pending = False
+        self.post_switch_dwell_remaining = 0
+        self.rollback_verification_started_round = None
 
 
 class StateStore:
