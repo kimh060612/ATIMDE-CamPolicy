@@ -205,7 +205,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--settle-frames", type=int, default=2)
     parser.add_argument("--warmup-frames", type=int, default=30)
     parser.add_argument("--frame-timeout-ms", type=int, default=1000)
-    parser.add_argument("--exposure-value-per-ms", type=float, default=1000.0)
+    parser.add_argument("--exposure-value-per-ms", type=float, default=10.0)
     parser.add_argument("--disable-awb", action="store_true")
     parser.add_argument("--allow-unsupported-grid-values", action="store_true")
     parser.add_argument("--camera-parameter-warn-ms", type=float, default=50.0)
@@ -213,7 +213,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--control-decision-warn-ms", type=float, default=500.0)
     parser.add_argument("--max-pair-capture-gap-ms", type=float, default=100.0)
     parser.add_argument("--evaluation-alignment", choices=("metric", "scale_shift_depth", "scale_shift_inverse"), default="scale_shift_inverse")
-    parser.add_argument("--min-depth-m", type=float, default=0.2)
+    parser.add_argument("--min-depth-m", type=float, default=1e-3)
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument("--min-valid-depth-pixels", type=int, default=10000)
 
