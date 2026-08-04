@@ -1359,8 +1359,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument("--min-valid-depth-pixels", type=int, default=1000)
     args = parser.parse_args()
-    if not 1 <= args.max_rounds <= 200:
-        parser.error("--max-rounds must be between 1 and 200.")
+    if not 1 <= args.max_rounds <= 400:
+        parser.error("--max-rounds must be between 1 and 400.")
     if args.round_interval_ms < 0.0:
         parser.error("--round-interval-ms must be non-negative.")
     if not 0.0 < args.min_depth_m < args.max_depth_m:
