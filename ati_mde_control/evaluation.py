@@ -45,7 +45,9 @@ class DepthEvaluator:
                     float(row["actual_gain"] or row["gain"]),
                     depth.shape,
                 )
-                row.update(self._metrics(prediction, depth), evaluation_inference_ms=inference_ms)
+                metrics = self._metrics(prediction, depth)
+                row.update(metrics, evaluation_inference_ms=inference_ms)
+                print(f"[Evaluate] round={row['round_index']} capture={row['capture_index']} metrics={metrics}")
             except (OSError, RuntimeError, ValueError) as error:
                 row["evaluation_error"] = str(error)
 
