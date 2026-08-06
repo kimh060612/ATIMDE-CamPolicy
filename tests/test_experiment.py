@@ -35,6 +35,12 @@ class Camera:
     def __init__(self, events):
         self.events = events
         self.frame_sequence = 0
+        self.color_frame_number = 0
+        self.depth_frame_number = 0
+        self.color_timestamp_us = 0
+        self.depth_timestamp_us = 0
+        self.setting_effective = True
+        self.sensor_settle_ms = 0.0
 
     def apply_cell(self, cell):
         self.events.append(f"apply:{cell.cell_id}")
@@ -43,6 +49,8 @@ class Camera:
     def capture_rgbd(self):
         self.events.append("capture")
         self.frame_sequence += 1
+        self.color_frame_number = self.depth_frame_number = self.frame_sequence
+        self.color_timestamp_us = self.depth_timestamp_us = self.frame_sequence * 1000
         return np.zeros((2, 2, 3), np.uint8), np.ones((2, 2), np.float32)
 
     def close(self):

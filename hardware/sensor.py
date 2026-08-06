@@ -30,12 +30,9 @@ try:
         OBStreamType,
         Pipeline,
     )
-except ImportError as exc:  # pragma: no cover - depends on target machine
-    raise SystemExit(
-        "pyorbbecsdk is not installed. For SDK v2, install the official "
-        "package/build appropriate for your platform (the PyPI package is "
-        "typically named pyorbbecsdk2 but imports as pyorbbecsdk)."
-    ) from exc
+except ImportError:  # pragma: no cover - depends on target machine
+    AlignFilter = Config = Pipeline = None  # type: ignore
+    OBError = RuntimeError  # type: ignore
 
 
 EXPOSURE_MS_VALUES: tuple[int, ...] = (4, 8, 16, 32)
@@ -54,6 +51,101 @@ LIGHT_LABEL_TO_STATE = {"normal": 0, "dim": 1, "dark": 2}
 MOTION_STATE_TO_LABEL = {value: key for key, value in MOTION_LABEL_TO_STATE.items()}
 LIGHT_STATE_TO_LABEL = {value: key for key, value in LIGHT_LABEL_TO_STATE.items()}
 
+QUEUE_DRAIN_TIMEOUT_MS = 5
+MAX_QUEUE_DRAIN_FRAMES = 16
+
+
+@dataclass(frozen=True)
+class FrameMetadata:
+    color_frame_number: Optional[int]
+    depth_frame_number: Optional[int]
+    color_timestamp_us: Optional[int]
+    depth_timestamp_us: Optional[int]
+
+
+def _optional_int(frame: Any, method_name: str) -> Optional[int]:
+    method = getattr(frame, method_name, None)
+    if not callable(method):
+        return None
+    try:
+        return int(method())
+    except (AttributeError, OBError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _timestamp_us(frame: Any) -> Optional[int]:
+    timestamp = _optional_int(frame, "get_timestamp_us")
+    if timestamp is not None:
+        return timestamp
+    timestamp_ms = _optional_int(frame, "get_timestamp")
+    return timestamp_ms * 1000 if timestamp_ms is not None else None
+
+
+def frame_metadata(frames: Any) -> Optional[FrameMetadata]:
+    try:
+        color = frames.get_color_frame()
+        depth = frames.get_depth_frame()
+    except (AttributeError, OBError, RuntimeError):
+        return None
+    if color is None or depth is None:
+        return None
+    return FrameMetadata(
+        _optional_int(color, "get_frame_number"),
+        _optional_int(depth, "get_frame_number"),
+        _timestamp_us(color),
+        _timestamp_us(depth),
+    )
+
+
+def _stream_is_fresh(
+    previous_number: Optional[int],
+    previous_timestamp_us: Optional[int],
+    number: Optional[int],
+    timestamp_us: Optional[int],
+) -> bool:
+    if number is None and timestamp_us is None:
+        return False
+    if previous_number is not None and (number is None or number <= previous_number):
+        return False
+    if (
+        previous_timestamp_us is not None
+        and (timestamp_us is None or timestamp_us <= previous_timestamp_us)
+    ):
+        return False
+    return True
+
+
+def metadata_is_fresh(previous: Optional[FrameMetadata], current: FrameMetadata) -> bool:
+    if previous is None:
+        previous = FrameMetadata(None, None, None, None)
+    return _stream_is_fresh(
+        previous.color_frame_number,
+        previous.color_timestamp_us,
+        current.color_frame_number,
+        current.color_timestamp_us,
+    ) and _stream_is_fresh(
+        previous.depth_frame_number,
+        previous.depth_timestamp_us,
+        current.depth_frame_number,
+        current.depth_timestamp_us,
+    )
+
+
+def _metadata_max(previous: Optional[FrameMetadata], current: FrameMetadata) -> FrameMetadata:
+    if previous is None:
+        return current
+
+    def maximum(left: Optional[int], right: Optional[int]) -> Optional[int]:
+        values = [value for value in (left, right) if value is not None]
+        return max(values) if values else None
+
+    return FrameMetadata(
+        maximum(previous.color_frame_number, current.color_frame_number),
+        maximum(previous.depth_frame_number, current.depth_frame_number),
+        maximum(previous.color_timestamp_us, current.color_timestamp_us),
+        maximum(previous.depth_timestamp_us, current.depth_timestamp_us),
+    )
+
 class OrbbecColorCamera:
     def __init__(
         self,
@@ -65,6 +157,11 @@ class OrbbecColorCamera:
         disable_awb: bool,
         strict_property_grid: bool,
     ) -> None:
+        if Pipeline is None:
+            raise RuntimeError(
+                "pyorbbecsdk is not installed. Install the official SDK v2 package "
+                "(typically pyorbbecsdk2, imported as pyorbbecsdk)."
+            )
         if exposure_value_per_ms <= 0:
             raise ValueError("exposure_value_per_ms must be positive.")
         if settle_frames < 0 or warmup_frames < 0:
@@ -74,6 +171,16 @@ class OrbbecColorCamera:
         self.settle_frames = settle_frames
         self.frame_timeout_ms = frame_timeout_ms
         self.frame_sequence: Optional[int] = None
+        self.color_frame_number: Optional[int] = None
+        self.depth_frame_number: Optional[int] = None
+        self.color_timestamp_us: Optional[int] = None
+        self.depth_timestamp_us: Optional[int] = None
+        self.setting_effective = False
+        self.sensor_settle_ms = 0.0
+        self._last_metadata: Optional[FrameMetadata] = None
+        self._capture_safe = True
+        self._readback_matches = False
+        self._settled_frames = 0
         self.pipeline = Pipeline()
         self.align_filter = AlignFilter(align_to_stream=OBStreamType.COLOR_STREAM)
 
@@ -139,7 +246,10 @@ class OrbbecColorCamera:
 
     def _warmup(self, count: int) -> None:
         for _ in range(count):
-            self.pipeline.wait_for_frames(self.frame_timeout_ms)
+            frames = self.pipeline.wait_for_frames(self.frame_timeout_ms)
+            metadata = frame_metadata(frames) if frames is not None else None
+            if metadata is not None:
+                self._last_metadata = _metadata_max(self._last_metadata, metadata)
 
     def _is_write_supported(self, property_id: Any) -> bool:
         try:
@@ -235,14 +345,15 @@ class OrbbecColorCamera:
         print(f"[Camera] gain range: {self.gain_range}")
 
     def apply_cell(self, cell: SensorCell) -> tuple[int, Optional[int], Optional[int]]:
+        self.setting_effective = False
+        self._settled_frames = 0
+        self._capture_safe = self._drain_pending_frames()
         exposure_raw = self.exposure_to_raw(cell.exposure_ms)
+        started = time.perf_counter()
         self.device.set_int_property(
             OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT, exposure_raw
         )
         self.device.set_int_property(OBPropertyID.OB_PROP_COLOR_GAIN_INT, cell.gain)
-
-        for _ in range(self.settle_frames):
-            self.pipeline.wait_for_frames(self.frame_timeout_ms)
 
         actual_exposure: Optional[int] = None
         actual_gain: Optional[int] = None
@@ -261,7 +372,41 @@ class OrbbecColorCamera:
         except (AttributeError, OBError, TypeError, ValueError):
             pass
 
+        self._readback_matches = (
+            actual_exposure == exposure_raw and actual_gain == cell.gain
+        )
+        if self._capture_safe:
+            # Close the small drain-to-command race before counting settling frames.
+            self._capture_safe = self._drain_pending_frames()
+        if self._capture_safe:
+            for _ in range(self.settle_frames):
+                _, metadata = self._wait_for_fresh_frameset()
+                self._last_metadata = metadata
+                self._settled_frames += 1
+        self.sensor_settle_ms = (time.perf_counter() - started) * 1000.0
+
         return exposure_raw, actual_exposure, actual_gain
+
+    def _drain_pending_frames(self) -> bool:
+        for _ in range(MAX_QUEUE_DRAIN_FRAMES):
+            frames = self.pipeline.wait_for_frames(QUEUE_DRAIN_TIMEOUT_MS)
+            if frames is None:
+                return True
+            metadata = frame_metadata(frames)
+            if metadata is not None:
+                self._last_metadata = _metadata_max(self._last_metadata, metadata)
+        return False
+
+    def _wait_for_fresh_frameset(self) -> tuple[Any, FrameMetadata]:
+        deadline = time.monotonic() + max(1.0, self.frame_timeout_ms / 1000.0 * 3)
+        while time.monotonic() < deadline:
+            frames = self.pipeline.wait_for_frames(self.frame_timeout_ms)
+            if frames is None:
+                continue
+            metadata = frame_metadata(frames)
+            if metadata is not None and metadata_is_fresh(self._last_metadata, metadata):
+                return frames, metadata
+        raise TimeoutError("Timed out waiting for a fresh RGB-D frameset.")
 
     def capture_rgbd(self) -> tuple[np.ndarray, np.ndarray]:
         """Capture one synchronized RGB-D frameset and align depth to color.
@@ -274,11 +419,14 @@ class OrbbecColorCamera:
             HxW float32 depth in metres, aligned to the color view. Invalid
             Orbbec depth values remain zero.
         """
+        if not self._capture_safe:
+            raise RuntimeError(
+                "Frame queue remained non-empty at the bounded drain limit; "
+                "refusing an unprovably fresh capture."
+            )
         deadline = time.monotonic() + max(1.0, self.frame_timeout_ms / 1000.0 * 3)
         while time.monotonic() < deadline:
-            frames = self.pipeline.wait_for_frames(self.frame_timeout_ms)
-            if frames is None:
-                continue
+            frames, metadata = self._wait_for_fresh_frameset()
             try:
                 aligned = self.align_filter.process(frames)
             except (AttributeError, OBError, RuntimeError):
@@ -290,11 +438,6 @@ class OrbbecColorCamera:
             depth_frame = aligned.get_depth_frame()
             if color_frame is None or depth_frame is None:
                 continue
-
-            try:
-                self.frame_sequence = int(color_frame.get_frame_number())
-            except (AttributeError, TypeError, ValueError):
-                self.frame_sequence = None
 
             image = frame_to_bgr_image(color_frame)
             if image is None or image.size == 0:
@@ -327,6 +470,18 @@ class OrbbecColorCamera:
                     interpolation=cv2.INTER_NEAREST,
                 )
 
+            self._last_metadata = metadata
+            self.color_frame_number = metadata.color_frame_number
+            self.depth_frame_number = metadata.depth_frame_number
+            self.color_timestamp_us = metadata.color_timestamp_us
+            self.depth_timestamp_us = metadata.depth_timestamp_us
+            self.frame_sequence = metadata.color_frame_number
+            self.setting_effective = (
+                self._readback_matches
+                and self._capture_safe
+                and self._settled_frames == self.settle_frames
+                and metadata_is_fresh(None, metadata)
+            )
             return image, np.ascontiguousarray(depth_m, dtype=np.float32)
 
         raise TimeoutError("Timed out waiting for a valid aligned RGB-D frame.")

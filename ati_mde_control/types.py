@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
-
 import numpy as np
 
 from hardware.utils import ContextKey, QScore, SensorCell
@@ -60,14 +58,19 @@ class CapturedFrame:
     actual_exposure_raw: int | None
     actual_gain: int | None
     camera_parameter_ms: float
-    freshness_token: Any = None
+    color_frame_number: int | None = None
+    depth_frame_number: int | None = None
+    color_timestamp_us: int | None = None
+    depth_timestamp_us: int | None = None
+    setting_effective: bool = False
+    sensor_settle_ms: float = 0.0
 
 
 @dataclass(frozen=True)
 class CapturePair:
     current: CapturedFrame
     challenger: CapturedFrame
-    gap_ms: float
+    gap_ms: float | None
     valid: bool
     invalid_reason: str = ""
 

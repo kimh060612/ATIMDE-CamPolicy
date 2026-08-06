@@ -20,7 +20,9 @@ CSV_FIELDS = (
     "record_type", "round_index", "capture_index", "timestamp_ns", "capture_role",
     "output_delivered", "motion_state", "motion_label", "light_state", "lighting_label",
     "cell_id", "exposure_ms", "exposure_us_model", "gain", "requested_exposure_raw",
-    "actual_exposure_raw", "actual_gain", "active_cell_before", "active_cell_after",
+    "actual_exposure_raw", "actual_gain", "color_frame_number", "depth_frame_number",
+    "color_timestamp_us", "depth_timestamp_us", "setting_effective", "sensor_settle_ms",
+    "active_cell_before", "active_cell_after",
     "search_axis", "search_direction", "search_cycle_complete", "cycle_had_switch",
     "probe_pending_before", "probe_pending_after", "rounds_since_valid_probe",
     "challenger_cell_id", "pair_status", "pair_mode", "switch_event",
@@ -83,6 +85,12 @@ class CaptureLogger:
             requested_exposure_raw=frame.requested_exposure_raw,
             actual_exposure_raw=frame.actual_exposure_raw,
             actual_gain=frame.actual_gain,
+            color_frame_number=frame.color_frame_number,
+            depth_frame_number=frame.depth_frame_number,
+            color_timestamp_us=frame.color_timestamp_us,
+            depth_timestamp_us=frame.depth_timestamp_us,
+            setting_effective=int(frame.setting_effective),
+            sensor_settle_ms=frame.sensor_settle_ms,
             camera_parameter_ms=frame.camera_parameter_ms,
             initial_inference_count=1,
             image_path=str(image_path),
@@ -127,7 +135,10 @@ class CaptureLogger:
             probe = next((item for item in probes if item["round_index"] == row["round_index"]), None)
             if probe and row["abs_rel"] != "" and probe["abs_rel"] != "":
                 comparisons.append(float(probe["abs_rel"]) - float(row["abs_rel"]))
-        gaps = np.array([float(row["pair_capture_gap_ms"]) for row in pair_rows], dtype=float)
+        gaps = np.array([
+            float(row["pair_capture_gap_ms"])
+            for row in pair_rows if row["pair_capture_gap_ms"] not in ("", None)
+        ], dtype=float)
         times = [int(row["timestamp_ns"]) for row in initial]
         duration = (max(times) - min(times)) / 1e9 if len(times) > 1 else 0.0
         mean = lambda values: float(np.mean(values)) if values else ""

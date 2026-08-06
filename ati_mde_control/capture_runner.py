@@ -71,7 +71,12 @@ class CaptureRunner:
             actual_exposure_raw=actual_exposure,
             actual_gain=actual_gain,
             camera_parameter_ms=parameter_ms,
-            freshness_token=getattr(self.camera, "frame_sequence", None),
+            color_frame_number=getattr(self.camera, "color_frame_number", None),
+            depth_frame_number=getattr(self.camera, "depth_frame_number", None),
+            color_timestamp_us=getattr(self.camera, "color_timestamp_us", None),
+            depth_timestamp_us=getattr(self.camera, "depth_timestamp_us", None),
+            setting_effective=bool(getattr(self.camera, "setting_effective", False)),
+            sensor_settle_ms=float(getattr(self.camera, "sensor_settle_ms", 0.0)),
         )
         self.next_capture_index += 1
         return frame
@@ -85,22 +90,38 @@ class CaptureRunner:
     ) -> CapturePair:
         current_capture = self.capture(current, context, "initial", round_index)
         challenger_capture = self.capture(challenger, context, "challenger", round_index)
-        gap_ms = (challenger_capture.timestamp_ns - current_capture.timestamp_ns) / 1_000_000.0
-        fresh = (
-            current_capture.freshness_token is None
-            or challenger_capture.freshness_token is None
-            or current_capture.freshness_token != challenger_capture.freshness_token
+        current_timestamp = (
+            current_capture.color_timestamp_us
+            if current_capture.color_timestamp_us is not None
+            else current_capture.depth_timestamp_us
         )
+        challenger_timestamp = (
+            challenger_capture.color_timestamp_us
+            if challenger_capture.color_timestamp_us is not None
+            else challenger_capture.depth_timestamp_us
+        )
+        gap_ms = (
+            (challenger_timestamp - current_timestamp) / 1000.0
+            if current_timestamp is not None and challenger_timestamp is not None
+            else None
+        )
+        timestamps_ordered = gap_ms is not None and gap_ms > 0
         valid = (
             current_capture.context_stable
             and challenger_capture.context_stable
             and current_capture.capture_context == context
             and challenger_capture.capture_context == context
+            and timestamps_ordered
             and gap_ms <= self.max_pair_gap_ms
-            and fresh
+            and current_capture.setting_effective
+            and challenger_capture.setting_effective
         )
         reason = "" if valid else (
-            "stale_challenger" if not fresh else
+            "setting_ineffective" if not (
+                current_capture.setting_effective and challenger_capture.setting_effective
+            ) else
+            "device_timestamp_unavailable" if gap_ms is None else
+            "device_timestamp_order" if gap_ms <= 0 else
             "capture_gap" if gap_ms > self.max_pair_gap_ms else
             "capture_context"
         )

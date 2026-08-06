@@ -114,3 +114,18 @@ runs/absrel_metric/
 This q is an **oracle experiment score**, because it uses aligned RGB-D ground truth during control. It is suitable for testing whether the deterministic probing algorithm selects good exposure/gain cells. It is not the final deployable structural-risk model, which must operate without GT.
 
 The aligned depth GT may still contain RGB-D occlusion-boundary errors, invalid zeros, flying pixels, and material-dependent failures. The implementation masks invalid/out-of-range GT, but results should still be checked visually and with a minimum valid-pixel threshold.
+
+## Settling calibration
+
+With the camera fixed on a static scene, run:
+
+```bash
+python tools/calibrate_orbbec_settling.py \
+  --output-dir runs/settling_test \
+  --repetitions 50
+```
+
+The script tests the E04_G064/E08_G064 and E08_G032/E08_G064 transitions. Its
+`summary.json` recommends `settle_frames` as the p99 zero-based offset of the
+first stable frame across valid repetitions. Pass that value to the existing
+main experiment option, for example `--settle-frames N`.
