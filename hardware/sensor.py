@@ -362,6 +362,7 @@ class OrbbecColorCamera:
     def apply_cell(self, cell: SensorCell) -> tuple[int, Optional[int], Optional[int]]:
         exposure_raw = self.exposure_to_raw(cell.exposure_ms)
         if cell == self._verified_active_cell:
+            self._capture_safe = self._drain_pending_frames()
             self.sensor_settle_ms = 0.0
             return exposure_raw, self._actual_exposure, self._actual_gain
 
