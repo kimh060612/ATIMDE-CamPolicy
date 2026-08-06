@@ -106,15 +106,16 @@ def _stream_is_fresh(
     number: Optional[int],
     timestamp_us: Optional[int],
 ) -> bool:
-    if number is None or timestamp_us is None:
+    if number is None and timestamp_us is None:
         return False
-    if previous_number is not None and (number is None or number <= previous_number):
-        return False
-    if (
-        previous_timestamp_us is not None
-        and (timestamp_us is None or timestamp_us <= previous_timestamp_us)
-    ):
-        return False
+
+    if previous_number is not None:
+        if number is None or number <= previous_number:
+            return False
+        
+    if previous_timestamp_us is not None:
+        if timestamp_us is None or timestamp_us <= previous_timestamp_us:
+            return False
     return True
 
 

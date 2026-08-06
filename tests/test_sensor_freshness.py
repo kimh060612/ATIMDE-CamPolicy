@@ -267,13 +267,31 @@ class SensorFreshnessTest(unittest.TestCase):
         self.assertEqual(metadata.color_timestamp_us, 12_000)
         self.assertFalse(sensor.metadata_is_fresh(None, metadata))
 
-    def test_frame_number_and_device_timestamp_are_both_required(self):
-        self.assertFalse(sensor.metadata_is_fresh(
-            None, sensor.FrameMetadata(1, 1, None, 1_000)
-        ))
-        self.assertFalse(sensor.metadata_is_fresh(
-            None, sensor.FrameMetadata(1, None, 1_000, 1_000)
-        ))
+    def test_timestamp_only_metadata_is_fresh(self):
+        previous = sensor.FrameMetadata(None, None, 1_000, 1_000)
+        current = sensor.FrameMetadata(None, None, 2_000, 2_000)
+
+        self.assertTrue(sensor.metadata_is_fresh(previous, current))
+
+
+    def test_duplicate_timestamp_is_rejected_without_frame_number(self):
+        previous = sensor.FrameMetadata(None, None, 2_000, 2_000)
+        current = sensor.FrameMetadata(None, None, 2_000, 2_000)
+
+        self.assertFalse(sensor.metadata_is_fresh(previous, current))
+
+
+    def test_decreasing_timestamp_is_rejected_without_frame_number(self):
+        previous = sensor.FrameMetadata(None, None, 2_000, 2_000)
+        current = sensor.FrameMetadata(None, None, 1_000, 1_000)
+
+        self.assertFalse(sensor.metadata_is_fresh(previous, current))
+
+
+    def test_metadata_without_number_or_timestamp_is_rejected(self):
+        metadata = sensor.FrameMetadata(None, None, None, None)
+
+        self.assertFalse(sensor.metadata_is_fresh(None, metadata))
 
     def test_duplicate_and_decreasing_numbers_are_rejected(self):
         cam = camera([
