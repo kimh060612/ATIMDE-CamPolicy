@@ -88,8 +88,10 @@ class Device:
     def __init__(self, *, readback_matches=True):
         self.values = {}
         self.readback_matches = readback_matches
+        self.set_calls = []
 
     def set_int_property(self, property_id, value):
+        self.set_calls.append((property_id, value))
         self.values[property_id] = value
 
     def get_int_property(self, property_id):
@@ -121,7 +123,37 @@ def camera(frames, *, settle_frames=2, readback_matches=True, continuous=False):
     result._capture_safe = True
     result._readback_matches = False
     result._settled_frames = 0
+    result._pending_cell = None
+    result._verified_active_cell = None
+    result._actual_exposure = None
+    result._actual_gain = None
     return result
+
+
+class Profiles:
+    def __init__(self, result=None, error=None):
+        self.result = result
+        self.error = error
+        self.requests = []
+        self.default_requested = False
+
+    def get_video_stream_profile(self, width, height, frame_format, fps):
+        self.requests.append((width, height, frame_format, fps))
+        if self.error:
+            raise self.error
+        return self.result
+
+    def get_default_video_stream_profile(self):
+        self.default_requested = True
+        return "default"
+
+
+class ProfilePipeline:
+    def __init__(self, profiles):
+        self.profiles = profiles
+
+    def get_stream_profile_list(self, sensor_type):
+        return self.profiles[sensor_type]
 
 
 class RunnerCamera:
@@ -149,6 +181,13 @@ class NoTimestampCamera(RunnerCamera):
         return image, depth
 
 
+class DepthTimestampOnlyCamera(RunnerCamera):
+    def capture_rgbd(self):
+        image, depth = super().capture_rgbd()
+        self.color_timestamp_us = None
+        return image, depth
+
+
 class SensorFreshnessTest(unittest.TestCase):
     def setUp(self):
         self.properties = SimpleNamespace(
@@ -167,6 +206,31 @@ class SensorFreshnessTest(unittest.TestCase):
         for item in reversed(self.patches):
             item.stop()
 
+    def test_exact_640x480_30_rgbd_profiles_are_selected(self):
+        profiles = {
+            "color": Profiles("color-profile"),
+            "depth": Profiles("depth-profile"),
+        }
+        pipeline = ProfilePipeline(profiles)
+        self.assertEqual(
+            sensor._required_video_profile(pipeline, "color", "rgb", "color"),
+            "color-profile",
+        )
+        self.assertEqual(
+            sensor._required_video_profile(pipeline, "depth", "y16", "depth"),
+            "depth-profile",
+        )
+        self.assertEqual(profiles["color"].requests, [(640, 480, "rgb", 30)])
+        self.assertEqual(profiles["depth"].requests, [(640, 480, "y16", 30)])
+
+    def test_missing_profile_fails_without_default_fallback(self):
+        profiles = Profiles(error=RuntimeError("not found"))
+        with self.assertRaisesRegex(RuntimeError, "Required depth profile 640x480@30"):
+            sensor._required_video_profile(
+                ProfilePipeline({"depth": profiles}), "depth", "y16", "depth"
+            )
+        self.assertFalse(profiles.default_requested)
+
     def test_stale_queue_is_drained_and_two_fresh_frames_are_settled(self):
         cam = camera([
             Frameset(100), Frameset(101), None, None,
@@ -178,10 +242,38 @@ class SensorFreshnessTest(unittest.TestCase):
         self.assertEqual(cam.color_frame_number, 104)
         self.assertTrue(cam.setting_effective)
 
+    def test_verified_active_cell_is_not_reapplied_or_settled(self):
+        cam = camera([
+            None, None, Frameset(1), Frameset(2), Frameset(3), Frameset(4),
+        ])
+        cell = SensorCell(8, 64)
+        cam.apply_cell(cell)
+        cam.capture_rgbd()
+        calls_after_first_capture = cam.pipeline.calls
+        writes_after_first_capture = list(cam.device.set_calls)
+
+        requested, actual_exposure, actual_gain = cam.apply_cell(cell)
+        cam.capture_rgbd()
+
+        self.assertEqual(cam.device.set_calls, writes_after_first_capture)
+        self.assertEqual(cam.pipeline.calls, calls_after_first_capture + 1)
+        self.assertEqual((requested, actual_exposure, actual_gain), (80, 80, 64))
+        self.assertEqual(cam.color_frame_number, 4)
+        self.assertEqual(cam.sensor_settle_ms, 0.0)
+        self.assertTrue(cam.setting_effective)
+
     def test_legacy_device_timestamp_is_used_when_us_api_is_absent(self):
         metadata = sensor.frame_metadata(LegacyFrameset(12))
         self.assertEqual(metadata.color_timestamp_us, 12_000)
-        self.assertTrue(sensor.metadata_is_fresh(None, metadata))
+        self.assertFalse(sensor.metadata_is_fresh(None, metadata))
+
+    def test_frame_number_and_device_timestamp_are_both_required(self):
+        self.assertFalse(sensor.metadata_is_fresh(
+            None, sensor.FrameMetadata(1, 1, None, 1_000)
+        ))
+        self.assertFalse(sensor.metadata_is_fresh(
+            None, sensor.FrameMetadata(1, None, 1_000, 1_000)
+        ))
 
     def test_duplicate_and_decreasing_numbers_are_rejected(self):
         cam = camera([
@@ -207,6 +299,17 @@ class SensorFreshnessTest(unittest.TestCase):
         self.assertEqual(cam.color_frame_number, 1)
         self.assertFalse(cam.setting_effective)
 
+    def test_matching_readback_cannot_make_stale_aligned_frame_effective(self):
+        cam = camera([None, None, Frameset(6)], settle_frames=0)
+        cam._last_metadata = sensor.FrameMetadata(5, 5, 5_000, 5_000)
+        cam.align_filter = SimpleNamespace(process=lambda frameset: Frameset(5))
+        cam.apply_cell(SensorCell(8, 64))
+        with patch("hardware.sensor.time.monotonic", side_effect=(0, 0, 0, 0, 2)):
+            with self.assertRaises(TimeoutError):
+                cam.capture_rgbd()
+        self.assertFalse(cam.setting_effective)
+        self.assertIsNone(cam.color_frame_number)
+
     def test_pair_gap_uses_device_timestamp(self):
         runner = CaptureRunner(RunnerCamera(), Provider(), 100.0)
         with patch("ati_mde_control.capture_runner.time.time_ns", side_effect=(1, 9_000_000_001)):
@@ -218,6 +321,15 @@ class SensorFreshnessTest(unittest.TestCase):
 
     def test_pair_without_device_timestamp_is_invalid(self):
         runner = CaptureRunner(NoTimestampCamera(), Provider(), 100.0)
+        pair = runner.capture_pair(
+            SensorCell(4, 64), SensorCell(8, 64), ContextKey(0, 0), 0
+        )
+        self.assertIsNone(pair.gap_ms)
+        self.assertFalse(pair.valid)
+        self.assertEqual(pair.invalid_reason, "device_timestamp_unavailable")
+
+    def test_pair_gap_does_not_fallback_to_depth_timestamp(self):
+        runner = CaptureRunner(DepthTimestampOnlyCamera(), Provider(), 100.0)
         pair = runner.capture_pair(
             SensorCell(4, 64), SensorCell(8, 64), ContextKey(0, 0), 0
         )

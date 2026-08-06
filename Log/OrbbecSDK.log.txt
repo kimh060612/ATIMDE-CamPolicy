@@ -3980,3 +3980,12 @@
 [07/27 20:06:30.564527][info][13828][SensorBase.cpp:47] [CP7JC420008T] SensorBase is destroyed
 [07/27 20:06:30.590015][info][13828][ObLibuvcDevicePort.cpp:87] uvc_close done.
 [07/27 20:06:30.590028][info][13828][ObLibuvcDevicePort.cpp:88] ~ObLibuvcDevicePort done
+[08/06 16:50:34.601332][info][2648371][LinuxUsbPal.cpp:334] Create PollingDeviceWatcher!
+[08/06 16:50:34.601353][info][2648371][DeviceManager.cpp:25] Current found device(s): (0)
+[08/06 16:50:34.601355][info][2648371][DeviceManager.cpp:405] Enable net device enumeration: true
+[08/06 16:50:35.607559][info][2648371][DeviceManager.cpp:25] Current device(s) list: (0)
+[08/06 16:50:35.607605][warning][2648371][ObException.cpp:32] A unrecoverable_exception has occurred!
+ - where: Pipeline.cpp(22)
+ - msg: No device found
+ - type: CAMERA_DISCONNECTED
+ - status: 112

@@ -53,6 +53,9 @@ LIGHT_STATE_TO_LABEL = {value: key for key, value in LIGHT_LABEL_TO_STATE.items(
 
 QUEUE_DRAIN_TIMEOUT_MS = 5
 MAX_QUEUE_DRAIN_FRAMES = 16
+RGBD_WIDTH = 640
+RGBD_HEIGHT = 480
+RGBD_FPS = 30
 
 
 @dataclass(frozen=True)
@@ -103,7 +106,7 @@ def _stream_is_fresh(
     number: Optional[int],
     timestamp_us: Optional[int],
 ) -> bool:
-    if number is None and timestamp_us is None:
+    if number is None or timestamp_us is None:
         return False
     if previous_number is not None and (number is None or number <= previous_number):
         return False
@@ -146,6 +149,19 @@ def _metadata_max(previous: Optional[FrameMetadata], current: FrameMetadata) -> 
         maximum(previous.depth_timestamp_us, current.depth_timestamp_us),
     )
 
+
+def _required_video_profile(pipeline: Any, sensor_type: Any, frame_format: Any, label: str) -> Any:
+    try:
+        profiles = pipeline.get_stream_profile_list(sensor_type)
+        return profiles.get_video_stream_profile(
+            RGBD_WIDTH, RGBD_HEIGHT, frame_format, RGBD_FPS
+        )
+    except (AttributeError, OBError, RuntimeError) as exc:
+        raise RuntimeError(
+            f"Required {label} profile {RGBD_WIDTH}x{RGBD_HEIGHT}@{RGBD_FPS} "
+            f"is unavailable: {exc}"
+        ) from exc
+
 class OrbbecColorCamera:
     def __init__(
         self,
@@ -181,26 +197,23 @@ class OrbbecColorCamera:
         self._capture_safe = True
         self._readback_matches = False
         self._settled_frames = 0
+        self._pending_cell: Optional[SensorCell] = None
+        self._verified_active_cell: Optional[SensorCell] = None
+        self._actual_exposure: Optional[int] = None
+        self._actual_gain: Optional[int] = None
         self.pipeline = Pipeline()
         self.align_filter = AlignFilter(align_to_stream=OBStreamType.COLOR_STREAM)
 
         config = Config()
         try:
-            color_profiles = self.pipeline.get_stream_profile_list(
-                OBSensorType.COLOR_SENSOR
+            color_profile = _required_video_profile(
+                self.pipeline, OBSensorType.COLOR_SENSOR, OBFormat.RGB, "color"
             )
-            try:
-                color_profile = color_profiles.get_video_stream_profile(
-                    0, 0, OBFormat.RGB, 0
-                )
-            except (AttributeError, OBError, RuntimeError):
-                color_profile = color_profiles.get_default_video_stream_profile()
             config.enable_stream(color_profile)
 
-            depth_profiles = self.pipeline.get_stream_profile_list(
-                OBSensorType.DEPTH_SENSOR
+            depth_profile = _required_video_profile(
+                self.pipeline, OBSensorType.DEPTH_SENSOR, OBFormat.Y16, "depth"
             )
-            depth_profile = depth_profiles.get_default_video_stream_profile()
             config.enable_stream(depth_profile)
             config.set_frame_aggregate_output_mode(
                 OBFrameAggregateOutputMode.FULL_FRAME_REQUIRE
@@ -214,6 +227,7 @@ class OrbbecColorCamera:
             print(f"[WARNING] Could not enable frame sync: {exc}", file=sys.stderr)
 
         self.pipeline.start(config)
+        print("[Camera] color=640x480@30 depth=640x480@30")
         self.device = self.pipeline.get_device()
 
         self._warmup(warmup_frames)
@@ -345,10 +359,16 @@ class OrbbecColorCamera:
         print(f"[Camera] gain range: {self.gain_range}")
 
     def apply_cell(self, cell: SensorCell) -> tuple[int, Optional[int], Optional[int]]:
+        exposure_raw = self.exposure_to_raw(cell.exposure_ms)
+        if cell == self._verified_active_cell:
+            self.sensor_settle_ms = 0.0
+            return exposure_raw, self._actual_exposure, self._actual_gain
+
+        self._verified_active_cell = None
         self.setting_effective = False
         self._settled_frames = 0
+        self._pending_cell = cell
         self._capture_safe = self._drain_pending_frames()
-        exposure_raw = self.exposure_to_raw(cell.exposure_ms)
         started = time.perf_counter()
         self.device.set_int_property(
             OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT, exposure_raw
@@ -375,6 +395,8 @@ class OrbbecColorCamera:
         self._readback_matches = (
             actual_exposure == exposure_raw and actual_gain == cell.gain
         )
+        self._actual_exposure = actual_exposure
+        self._actual_gain = actual_gain
         if self._capture_safe:
             # Close the small drain-to-command race before counting settling frames.
             self._capture_safe = self._drain_pending_frames()
@@ -419,6 +441,7 @@ class OrbbecColorCamera:
             HxW float32 depth in metres, aligned to the color view. Invalid
             Orbbec depth values remain zero.
         """
+        self.setting_effective = False
         if not self._capture_safe:
             raise RuntimeError(
                 "Frame queue remained non-empty at the bounded drain limit; "
@@ -433,6 +456,13 @@ class OrbbecColorCamera:
                 aligned = None
             if aligned is None:
                 continue
+
+            aligned_metadata = frame_metadata(aligned)
+            if aligned_metadata is None or not metadata_is_fresh(
+                self._last_metadata, aligned_metadata
+            ):
+                continue
+            metadata = aligned_metadata
 
             color_frame = aligned.get_color_frame()
             depth_frame = aligned.get_depth_frame()
@@ -482,6 +512,8 @@ class OrbbecColorCamera:
                 and self._settled_frames == self.settle_frames
                 and metadata_is_fresh(None, metadata)
             )
+            if self.setting_effective:
+                self._verified_active_cell = self._pending_cell
             return image, np.ascontiguousarray(depth_m, dtype=np.float32)
 
         raise TimeoutError("Timed out waiting for a valid aligned RGB-D frame.")

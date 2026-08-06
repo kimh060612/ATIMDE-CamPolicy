@@ -90,16 +90,8 @@ class CaptureRunner:
     ) -> CapturePair:
         current_capture = self.capture(current, context, "initial", round_index)
         challenger_capture = self.capture(challenger, context, "challenger", round_index)
-        current_timestamp = (
-            current_capture.color_timestamp_us
-            if current_capture.color_timestamp_us is not None
-            else current_capture.depth_timestamp_us
-        )
-        challenger_timestamp = (
-            challenger_capture.color_timestamp_us
-            if challenger_capture.color_timestamp_us is not None
-            else challenger_capture.depth_timestamp_us
-        )
+        current_timestamp = current_capture.color_timestamp_us
+        challenger_timestamp = challenger_capture.color_timestamp_us
         gap_ms = (
             (challenger_timestamp - current_timestamp) / 1000.0
             if current_timestamp is not None and challenger_timestamp is not None
