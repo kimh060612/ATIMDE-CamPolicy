@@ -47,6 +47,9 @@ class LocalSearchTest(unittest.TestCase):
         self.assertEqual(decision.status, PairStatus.CURRENT_WON)
         self.assertTrue(state.exposure_negative_tested)
         self.assertFalse(state.exposure_positive_tested)
+        self.assertEqual(
+            self.policy.select_challenger(self.context, current), SensorCell(32, 64)
+        )
 
     def test_exposure_win_continues_in_same_direction(self) -> None:
         current = SensorCell(16, 64)
@@ -57,7 +60,40 @@ class LocalSearchTest(unittest.TestCase):
         self.assertEqual(decision.status, PairStatus.CHALLENGER_WON)
         self.assertEqual(state.search_axis, SearchAxis.EXPOSURE)
         self.assertEqual(state.search_direction, SearchDirection.NEGATIVE)
+        self.assertFalse(state.exposure_positive_tested)
         self.assertEqual(self.policy.select_challenger(self.context, challenger), SensorCell(4, 64))
+
+    def test_commit_at_boundary_reverses_on_same_axis(self) -> None:
+        current = SensorCell(8, 64)
+        self.policy.committed_cell(self.context, current)
+        challenger = self.policy.select_challenger(self.context, current)
+        self.assertEqual(challenger, SensorCell(4, 64))
+
+        self.policy.resolve(self.context, current, score(.2), challenger, score(.1), 0)
+        state = self.policy.state(self.context)
+        self.assertFalse(state.exposure_positive_tested)
+        self.assertEqual(
+            self.policy.select_challenger(self.context, challenger), SensorCell(8, 64)
+        )
+        self.assertEqual(state.search_axis, SearchAxis.EXPOSURE)
+        self.assertEqual(state.search_direction, SearchDirection.POSITIVE)
+
+    def test_axis_advances_only_after_both_directions_are_rejected(self) -> None:
+        current = SensorCell(16, 64)
+        self.policy.committed_cell(self.context, current)
+        negative = self.policy.select_challenger(self.context, current)
+        self.policy.resolve(self.context, current, score(.1), negative, score(.2), 0)
+
+        positive = self.policy.select_challenger(self.context, current)
+        state = self.policy.state(self.context)
+        self.assertEqual(positive, SensorCell(32, 64))
+        self.assertEqual(state.search_axis, SearchAxis.EXPOSURE)
+        self.policy.resolve(self.context, current, score(.1), positive, score(.2), 1)
+
+        self.assertEqual(
+            self.policy.select_challenger(self.context, current), SensorCell(16, 32)
+        )
+        self.assertEqual(state.search_axis, SearchAxis.GAIN)
 
     def test_exposure_and_gain_phases_do_not_starve(self) -> None:
         state = ContextState(

@@ -106,6 +106,9 @@ def select_challenger(
         if cooling:
             state.search_direction = None
             return None
+        if state.search_direction is not None:
+            state.search_direction = None
+            continue
         if not _advance_phase(state, initial_axis):
             return None
     return None
