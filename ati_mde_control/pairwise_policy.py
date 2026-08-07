@@ -284,6 +284,11 @@ class PairwisePolicy:
         state.cycle_had_switch = True
         local_search.reset_axis(state, state.search_axis)
         state.search_direction = direction
+        local_search.mark_direction_tested(
+            state,
+            SearchDirection.POSITIVE
+            if direction is SearchDirection.NEGATIVE else SearchDirection.NEGATIVE,
+        )
 
     @staticmethod
     def _reject(state, direction: SearchDirection) -> None:
