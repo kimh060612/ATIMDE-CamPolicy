@@ -1,0 +1,8 @@
+{
+  "recommended_settle_frames": 4,
+  "direction_match_rate": 1.0,
+  "valid_repetition_rate": 1.0,
+  "sensor_effect_latency_p50_ms": 100.204,
+  "sensor_effect_latency_p95_ms": 133.597,
+  "sensor_effect_latency_p99_ms": 166.989
+}
