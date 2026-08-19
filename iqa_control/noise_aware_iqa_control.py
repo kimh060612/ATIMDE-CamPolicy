@@ -123,7 +123,7 @@ def noise_aware_iqa(image_bgr: np.ndarray, resize_factor: float = 1.0) -> IQARes
         noise = channel_noise[0]
 
     # Paper/official MATLAB hyperparameters: alpha=.4, beta=.4, Kg=2.
-    score = 0.4 * 2.0 * gradient + 0.6 * entropy - 0.4 * noise
+    score = 0.5 * gradient + 0.5 * entropy - 0.4 * noise # 0.4 * 2.0, 0.6, 0.4
     values = (score, gradient, entropy, noise)
     if not all(math.isfinite(value) for value in values):
         raise ValueError(f"The IQA metric produced a non-finite value: {values}.")

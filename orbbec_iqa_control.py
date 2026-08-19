@@ -70,10 +70,10 @@ class DepthAnythingV2Small:
             local_files_only=args.depth_model_local_files_only,
         )
 
-    def infer(self, image_path: Path, output_path: Path) -> float:
-        image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-        if image is None:
-            raise OSError(f"Failed to read RGB image: {image_path}")
+    def predict(
+        self, image: np.ndarray, target_size: tuple[int, int] | None = None
+    ) -> tuple[np.ndarray, float]:
+        """Return the raw relative-depth prediction through the shared path."""
         backend = self.backend
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         pixels = backend.processor(images=rgb, return_tensors="pt")["pixel_values"].to(
@@ -93,25 +93,37 @@ class DepthAnythingV2Small:
                 prediction = prediction.unsqueeze(1)
             prediction = backend.torch_f.interpolate(
                 prediction.float(),
-                size=image.shape[:2],
+                size=target_size or image.shape[:2],
                 mode="bicubic",
                 align_corners=False,
             )[0, 0]
         if backend.device.type == "cuda":
             torch.cuda.synchronize(backend.device)
         inference_ms = (time.perf_counter() - started) * 1000.0
-        np.save(
-            output_path,
+        return (
             np.ascontiguousarray(prediction.detach().cpu().numpy(), dtype=np.float32),
+            inference_ms,
         )
+
+    def infer(self, image_path: Path, output_path: Path) -> float:
+        image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        if image is None:
+            raise OSError(f"Failed to read RGB image: {image_path}")
+        prediction, inference_ms = self.predict(image, image.shape[:2])
+        np.save(output_path, prediction)
         return inference_ms
 
 
-def _evaluate_saved_prediction(
-    row: dict[str, Any], args: argparse.Namespace
-) -> dict[str, Any]:
-    target_np = np.load(row["gt_depth_path"], allow_pickle=False).astype(np.float32)
-    prediction_np = np.load(row["raw_pred_depth_path"], allow_pickle=False).astype(np.float32)
+def evaluate_depth_arrays(
+    prediction_np: np.ndarray,
+    target_np: np.ndarray,
+    *,
+    alignment: str,
+    min_depth_m: float,
+    max_depth_m: float,
+    min_valid_depth_pixels: int,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Shared CPU scale/shift alignment and metrics for both experiments."""
     if prediction_np.shape != target_np.shape:
         prediction_np = cv2.resize(
             prediction_np,
@@ -122,36 +134,36 @@ def _evaluate_saved_prediction(
     prediction = torch.from_numpy(np.ascontiguousarray(prediction_np))
     valid = (
         torch.isfinite(target)
-        & (target >= args.min_depth_m)
-        & (target <= args.max_depth_m)
+        & (target >= min_depth_m)
+        & (target <= max_depth_m)
         & torch.isfinite(prediction)
     )
-    if int(valid.sum()) < args.min_valid_depth_pixels:
+    if int(valid.sum()) < min_valid_depth_pixels:
         raise ValueError("Not enough valid depth pixels for scale/shift alignment.")
 
-    if args.depth_alignment == "scale_shift_depth":
+    if alignment == "scale_shift_depth":
         scale, shift = _fit_scale_shift(prediction, target, valid)
         aligned = scale * prediction + shift
-    else:
+    elif alignment == "scale_shift_inverse":
         inverse_target = torch.reciprocal(target.clamp_min(1e-6))
         scale, shift = _fit_scale_shift(prediction, inverse_target, valid)
         aligned_inverse = scale * prediction + shift
         valid &= torch.isfinite(aligned_inverse) & (aligned_inverse > 1e-6)
         aligned = torch.reciprocal(aligned_inverse.clamp_min(1e-6))
+    else:
+        raise ValueError(f"Unsupported scale/shift alignment: {alignment}")
 
+    if not torch.isfinite(scale) or scale <= 0:
+        raise ValueError("Scale/shift alignment produced a non-positive scale.")
     valid &= torch.isfinite(aligned) & (aligned > 1e-6)
     count = int(valid.sum())
-    if count < args.min_valid_depth_pixels:
+    if count < min_valid_depth_pixels:
         raise ValueError("Not enough valid pixels remain after scale/shift alignment.")
     predicted, expected = aligned[valid], target[valid]
     difference = predicted - expected
     ratio = torch.maximum(predicted / expected, expected / predicted)
-    np.save(
-        row["pred_depth_path"],
-        np.ascontiguousarray(aligned.numpy(), dtype=np.float32),
-    )
-    return {
-        "depth_alignment": args.depth_alignment,
+    metrics = {
+        "depth_alignment": alignment,
         "alignment_scale": float(scale),
         "alignment_shift": float(shift),
         "abs_rel": float(torch.mean(torch.abs(difference) / expected)),
@@ -162,6 +174,24 @@ def _evaluate_saved_prediction(
         "a3": float(torch.mean((ratio < 1.25**3).float())),
         "valid_depth_pixels": count,
     }
+    return np.ascontiguousarray(aligned.numpy(), dtype=np.float32), metrics
+
+
+def _evaluate_saved_prediction(
+    row: dict[str, Any], args: argparse.Namespace
+) -> dict[str, Any]:
+    target = np.load(row["gt_depth_path"], allow_pickle=False).astype(np.float32)
+    prediction = np.load(row["raw_pred_depth_path"], allow_pickle=False).astype(np.float32)
+    aligned, metrics = evaluate_depth_arrays(
+        prediction,
+        target,
+        alignment=args.depth_alignment,
+        min_depth_m=args.min_depth_m,
+        max_depth_m=args.max_depth_m,
+        min_valid_depth_pixels=args.min_valid_depth_pixels,
+    )
+    np.save(row["pred_depth_path"], aligned)
+    return metrics
 
 
 def _empty_row() -> dict[str, Any]:
@@ -274,16 +304,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--disable-awb", action="store_true")
     parser.add_argument("--allow-unsupported-grid-values", action="store_true")
 
-    parser.add_argument("--depth-device", default="auto")
+    parser.add_argument("--depth-device", default="cuda")
     parser.add_argument("--depth-precision", choices=("fp16", "fp32"), default="fp32")
     parser.add_argument(
         "--depth-alignment",
         choices=("scale_shift_depth", "scale_shift_inverse"),
         default="scale_shift_inverse",
     )
-    parser.add_argument("--min-depth-m", type=float, default=0.2)
+    parser.add_argument("--min-depth-m", type=float, default=1e-3)
     parser.add_argument("--max-depth-m", type=float, default=10.0)
-    parser.add_argument("--min-valid-depth-pixels", type=int, default=1000)
+    parser.add_argument("--min-valid-depth-pixels", type=int, default=10000)
     parser.add_argument("--depth-model-local-files-only", action="store_true")
     args = parser.parse_args()
 
