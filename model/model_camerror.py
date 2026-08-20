@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 
 import torch
 import torch.nn as nn
@@ -210,14 +210,11 @@ class CameraInducedErrorModel(nn.Module):
         self.depth_model.eval()
         return self
 
-    def _extract_frozen_outputs(
+    def _extract_frozen_decoder_features(
         self,
         pixel_values: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Manually run frozen Hugging Face Depth Anything model so that both
-        predicted depth and fused decoder features are available.
-        """
+    ) -> tuple[Sequence[torch.Tensor], int, int]:
+        """Run the frozen backbone and neck shared by depth and score paths."""
         with torch.no_grad():
             backbone_outputs = (
                 self.depth_model.backbone.forward_with_filtered_kwargs(
@@ -250,6 +247,32 @@ class CameraInducedErrorModel(nn.Module):
                 patch_width,
             )
 
+        return decoder_features, patch_height, patch_width
+
+    def _frozen_feature(
+        self,
+        decoder_features: Sequence[torch.Tensor],
+    ) -> torch.Tensor:
+        feature_index = getattr(
+            self.depth_model.config,
+            "head_in_index",
+            -1,
+        )
+        return decoder_features[feature_index]
+
+    def _extract_frozen_outputs(
+        self,
+        pixel_values: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Manually run frozen Hugging Face Depth Anything model so that both
+        predicted depth and fused decoder features are available.
+        """
+        decoder_features, patch_height, patch_width = (
+            self._extract_frozen_decoder_features(pixel_values)
+        )
+
+        with torch.no_grad():
             base_depth = self.depth_model.head(
                 decoder_features,
                 patch_height,
@@ -259,15 +282,17 @@ class CameraInducedErrorModel(nn.Module):
         if base_depth.ndim == 3:
             base_depth = base_depth.unsqueeze(1)
 
-        feature_index = getattr(
-            self.depth_model.config,
-            "head_in_index",
-            -1,
+        return base_depth, self._frozen_feature(decoder_features)
+
+    def _extract_frozen_feature(
+        self,
+        pixel_values: torch.Tensor,
+    ) -> torch.Tensor:
+        """Extract the decoder feature without running the depth head."""
+        decoder_features, _, _ = self._extract_frozen_decoder_features(
+            pixel_values
         )
-
-        frozen_feature = decoder_features[feature_index]
-
-        return base_depth, frozen_feature
+        return self._frozen_feature(decoder_features)
 
     def _apply_film(
         self,
@@ -371,6 +396,27 @@ class CameraInducedErrorModel(nn.Module):
 
         return {
             "candidate_depth": candidate_depth,
+            "predicted_loss": camera_bias,
+            "camera_bias": camera_bias,
+            "log_variance": log_variance,
+            "variance": variance,
+            "std": std,
+        }
+
+    def inference_scores(
+        self,
+        candidate_img: torch.Tensor,
+        context: torch.Tensor,
+    ) -> Dict[str, torch.Tensor]:
+        """Predict image-level control scores without producing a depth map."""
+        frozen_feature = self._extract_frozen_feature(candidate_img)
+        shared_feature = self.feature_projection(frozen_feature)
+        conditioned_feature = self._apply_film(shared_feature, context)
+        camera_bias, variance = self._scalar_heads(conditioned_feature)
+        log_variance = torch.log(variance.clamp_min(1e-8))
+        std = torch.sqrt(variance)
+
+        return {
             "predicted_loss": camera_bias,
             "camera_bias": camera_bias,
             "log_variance": log_variance,

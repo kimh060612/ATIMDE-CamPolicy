@@ -90,17 +90,9 @@ class CameraErrorPredictor:
         gains: Sequence[float],
         target_size: tuple[int, int] | None = None,
     ) -> tuple[dict[str, torch.Tensor], float]:
-        size = len(images)
-        if not size or not (len(contexts) == len(exposure_us_values) == len(gains) == size):
-            raise ValueError("Inference inputs require the same non-zero length.")
-        rgb = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images]
-        pixels = self.processor(images=rgb, return_tensors="pt")["pixel_values"].to(
-            device=self.device, dtype=self.dtype, non_blocking=True
+        pixels, vectors = self._prepare_inputs(
+            images, contexts, exposure_us_values, gains
         )
-        vectors = torch.cat([
-            self._context_vector(context, exposure, gain)
-            for context, exposure, gain in zip(contexts, exposure_us_values, gains)
-        ])
         torch.cuda.synchronize(self.device)
         started = time.perf_counter()
         with torch.inference_mode():
@@ -112,8 +104,61 @@ class CameraErrorPredictor:
         torch.cuda.synchronize(self.device)
         return outputs, (time.perf_counter() - started) * 1000.0
 
+    def _prepare_inputs(
+        self,
+        images: Sequence[np.ndarray],
+        contexts: Sequence[ContextKey],
+        exposure_us_values: Sequence[float],
+        gains: Sequence[float],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        size = len(images)
+        if not size or not (len(contexts) == len(exposure_us_values) == len(gains) == size):
+            raise ValueError("Inference inputs require the same non-zero length.")
+        rgb = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images]
+        pixels = self.processor(images=rgb, return_tensors="pt")["pixel_values"].to(
+            device=self.device, dtype=self.dtype, non_blocking=True
+        )
+        vectors = torch.cat([
+            self._context_vector(context, exposure, gain)
+            for context, exposure, gain in zip(contexts, exposure_us_values, gains)
+        ])
+        return pixels, vectors
+
+    def _infer_scores(
+        self,
+        images: Sequence[np.ndarray],
+        contexts: Sequence[ContextKey],
+        exposure_us_values: Sequence[float],
+        gains: Sequence[float],
+    ) -> tuple[dict[str, torch.Tensor], float]:
+        pixels, vectors = self._prepare_inputs(
+            images, contexts, exposure_us_values, gains
+        )
+        torch.cuda.synchronize(self.device)
+        started = time.perf_counter()
+        with torch.inference_mode():
+            outputs = self.model.inference_scores(
+                candidate_img=pixels,
+                context=vectors,
+            )
+        torch.cuda.synchronize(self.device)
+        return outputs, (time.perf_counter() - started) * 1000.0
+
     def predict(self, image: np.ndarray, context: ContextKey, exposure_us: float, gain: float) -> QScore:
         return self.predict_batch([image], [context], [exposure_us], [gain])[0]
+
+    def predict_scores(
+        self,
+        image: np.ndarray,
+        context: ContextKey,
+        exposure_us: float,
+        gain: float,
+    ) -> QScore:
+        """Control-only score prediction that skips depth-head computation."""
+        outputs, inference_ms = self._infer_scores(
+            [image], [context], [exposure_us], [gain]
+        )
+        return self._scores(outputs, inference_ms, 1)[0]
 
     def predict_batch(
         self,
@@ -123,9 +168,17 @@ class CameraErrorPredictor:
         gains: Sequence[float],
     ) -> list[QScore]:
         outputs, inference_ms = self._infer(images, contexts, exposure_us_values, gains)
+        return self._scores(outputs, inference_ms, len(images))
+
+    def _scores(
+        self,
+        outputs: dict[str, torch.Tensor],
+        inference_ms: float,
+        batch_size: int,
+    ) -> list[QScore]:
         biases = outputs["camera_bias"].detach().float().cpu().tolist()
         deviations = outputs["std"].detach().float().cpu().tolist()
-        if len(biases) != len(images) or len(deviations) != len(images):
+        if len(biases) != batch_size or len(deviations) != batch_size:
             raise RuntimeError("Camera-error model returned the wrong batch size.")
         scores = []
         for mu, std in zip(biases, deviations):
@@ -134,7 +187,7 @@ class CameraErrorPredictor:
                 raise ValueError("Camera-error model returned a non-finite score.")
             scores.append(QScore(q, std, mu, {
                 "mde_inference_ms": inference_ms,
-                "mde_batch_size": float(len(images)),
+                "mde_batch_size": float(batch_size),
             }))
         return scores
 

@@ -195,7 +195,7 @@ class LocalSearchUpdateExperiment(CameraControlExperiment):
         return result
 
     def _predict(self, frame: CapturedFrame, context: ContextKey) -> QScore:
-        return self.predictor.predict(
+        return self.predictor.predict_scores(
             frame.image,
             context,
             frame.exposure_us,

@@ -97,13 +97,16 @@ class Predictor:
         self.on_predict = on_predict
         self.calls = 0
 
-    def predict(self, image, context, exposure_us, gain):
+    def predict_scores(self, image, context, exposure_us, gain):
         self.calls += 1
         exposure_ms = round(exposure_us / 1000.0)
         self.events.append(f"predict:E{exposure_ms:02d}_G{round(gain):03d}")
         if self.on_predict is not None:
             self.on_predict(self.calls, self.provider)
         return self.results.pop(0)
+
+    def predict(self, *args, **kwargs):
+        raise AssertionError("The local-search update path must use predict_scores().")
 
     def predict_batch(self, *args, **kwargs):
         raise AssertionError("The local-search update path must not use predict_batch().")
