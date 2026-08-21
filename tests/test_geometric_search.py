@@ -5,7 +5,10 @@ import numpy as np
 
 from ati_mde_control.capture_runner import CaptureRunner
 from ati_mde_control.config import ExperimentConfig, PolicyConfig, SafetyPolicy
-from ati_mde_control.geometric_search import GeometricProposalKind
+from ati_mde_control.geometric_search import (
+    GeometricProposalKind,
+    symmetric_axis_candidates,
+)
 from ati_mde_control.geometric_search_policy import GeometricSearchPolicy
 from ati_mde_control.geometric_search_update_experiment import (
     GeometricSearchUpdateExperiment,
@@ -31,7 +34,99 @@ class GeometricSearchPolicyTest(unittest.TestCase):
             self.context, SensorCell(16, 64)
         )
 
+    def test_symmetric_candidates_ignore_feasible_span(self) -> None:
+        context = ContextKey(2, 1)
+        safe = SafetyPolicy().safe_cells(context)
+        current = SensorCell(8, 64)
+
+        even = symmetric_axis_candidates(
+            current, "exposure", safe, {current.cell_id}, episode_id=0
+        )
+        odd = symmetric_axis_candidates(
+            current, "exposure", safe, {current.cell_id}, episode_id=1
+        )
+
+        self.assertEqual(even, [SensorCell(16, 64), SensorCell(4, 64)])
+        self.assertEqual(odd, [SensorCell(4, 64), SensorCell(16, 64)])
+
+    def test_symmetric_gain_candidates_alternate_by_episode(self) -> None:
+        context = ContextKey(0, 0)
+        safety = SafetyPolicy(
+            max_exposure_ms_by_motion=(16, 32, 32, 16, 8),
+            allowed_gains_by_light=(
+                (16, 32, 64),
+                (16, 32, 64, 128),
+                (16, 32, 64, 128),
+            ),
+        )
+        safe = safety.safe_cells(context)
+        current = SensorCell(8, 32)
+
+        even = symmetric_axis_candidates(
+            current, "gain", safe, {current.cell_id}, episode_id=0
+        )
+        odd = symmetric_axis_candidates(
+            current, "gain", safe, {current.cell_id}, episode_id=1
+        )
+
+        self.assertEqual(even, [SensorCell(8, 64), SensorCell(8, 16)])
+        self.assertEqual(odd, [SensorCell(8, 16), SensorCell(8, 64)])
+
+    def test_episode_initialization_alternates_an_equal_exposure_tie(self) -> None:
+        context = ContextKey(0, 1)
+        safety = SafetyPolicy(
+            max_exposure_ms_by_motion=(16, 32, 32, 16, 8)
+        )
+        policy = GeometricSearchPolicy(PolicyConfig(), safety)
+        current = policy.committed_cell(context, SensorCell(8, 64))
+
+        first = policy.proposal_after_current(context, current, score(0.30))
+        self.assertIn(first.cell_id, policy.state(context).tested_cell_ids)
+        self.assertNotIn(
+            SensorCell(4, 64).cell_id, policy.state(context).tested_cell_ids
+        )
+        policy.resolve(
+            context, current, score(0.30), first, score(0.40), round_index=0
+        )
+        self.assertIsNone(
+            policy.proposal_after_current(context, current, score(0.01))
+        )
+        second = policy.proposal_after_current(context, current, score(0.30))
+
+        self.assertEqual(first, SensorCell(16, 64))
+        self.assertEqual(second, SensorCell(4, 64))
+        self.assertIn(second.cell_id, policy.state(context).tested_cell_ids)
+        self.assertEqual(policy.state(context).episode_id, 2)
+
+    def test_symmetric_candidates_filter_unsafe_and_evaluated_cells(self) -> None:
+        current = SensorCell(8, 64)
+        safe = {
+            current,
+            SensorCell(4, 64),
+            # E16 is deliberately unsafe; E32 is not an adjacent candidate.
+            SensorCell(32, 64),
+        }
+
+        candidates = symmetric_axis_candidates(
+            current, "exposure", safe, {current.cell_id}, episode_id=0
+        )
+
+        self.assertEqual(candidates, [SensorCell(4, 64)])
+
+        evaluated = symmetric_axis_candidates(
+            current,
+            "exposure",
+            safe | {SensorCell(16, 64)},
+            {current.cell_id, SensorCell(16, 64).cell_id},
+            episode_id=0,
+        )
+        self.assertEqual(evaluated, [SensorCell(4, 64)])
+
     def _build_simplex(self):
+        # Keep these reflection/expansion tests on the historical negative
+        # geometry; neutral initialization itself is covered above for both
+        # episode parities.
+        self.policy.state(self.context).episode_id = 1
         exposure = self.policy.proposal_after_current(
             self.context, self.current, score(0.30)
         )
@@ -422,7 +517,7 @@ class GeometricSearchUpdateExperimentTest(unittest.TestCase):
         self.assertEqual(sum(event.startswith("capture:") for event in events), 2)
         self.assertEqual(
             [event for event in events if event.startswith("predict:")],
-            ["predict:E16_G064", "predict:E08_G064"],
+            ["predict:E16_G064", "predict:E32_G064"],
         )
         self.assertEqual(result.decision.status, PairStatus.CHALLENGER_WON)
 
@@ -433,8 +528,8 @@ class GeometricSearchUpdateExperimentTest(unittest.TestCase):
 
         runtime.run_round()
 
-        self.assertEqual(events.count("apply:E08_G064"), 1)
-        self.assertEqual(runtime.last_applied_cell, SensorCell(8, 64))
+        self.assertEqual(events.count("apply:E32_G064"), 1)
+        self.assertEqual(runtime.last_applied_cell, SensorCell(32, 64))
 
     def test_reject_restores_current_only_after_the_comparison(self) -> None:
         runtime, events, _, _, _ = make_experiment(

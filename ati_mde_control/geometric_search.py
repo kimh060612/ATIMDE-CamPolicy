@@ -70,30 +70,46 @@ def cell_to_point(cell: SensorCell) -> tuple[int, int]:
     )
 
 
-def nearest_axis_cell(
+def symmetric_axis_candidates(
     current: SensorCell,
     axis: str,
     safe_cells: Iterable[SensorCell],
-) -> SensorCell | None:
-    """Return the nearest safe cell that differs on exactly one grid axis."""
+    tested_cell_ids: set[str],
+    episode_id: int,
+) -> list[SensorCell]:
+    """Return safe, untested ±1 neighbors in neutral deterministic order.
 
-    current_point = cell_to_point(current)
-    candidates: list[tuple[int, tuple[int, int], SensorCell]] = []
-    for cell in safe_cells:
-        point = cell_to_point(cell)
-        if axis == "exposure":
-            eligible = point[1] == current_point[1] and point[0] != current_point[0]
-            distance = abs(point[0] - current_point[0])
-        elif axis == "gain":
-            eligible = point[0] == current_point[0] and point[1] != current_point[1]
-            distance = abs(point[1] - current_point[1])
-        else:
-            raise ValueError(f"Unknown geometric axis: {axis}")
-        if eligible:
-            candidates.append((distance, point, cell))
-    if not candidates:
-        return None
-    return min(candidates)[2]
+    Even episodes consider the positive neighbor first and odd episodes the
+    negative neighbor first.  No feasible-span, lighting, or score prior is
+    used, and an unselected opposite neighbor remains untested.
+    """
+
+    safe = set(safe_cells)
+    if current not in safe:
+        raise ValueError(f"Current cell {current.cell_id} is not safe.")
+    if axis == "exposure":
+        values = EXPOSURE_MS_VALUES
+        current_index = values.index(current.exposure_ms)
+    elif axis == "gain":
+        values = GAIN_VALUES
+        current_index = values.index(current.gain)
+    else:
+        raise ValueError(f"Unknown geometric axis: {axis}")
+
+    directions = (1, -1) if episode_id % 2 == 0 else (-1, 1)
+    candidates: list[SensorCell] = []
+    for direction in directions:
+        index = current_index + direction
+        if not 0 <= index < len(values):
+            continue
+        cell = (
+            SensorCell(values[index], current.gain)
+            if axis == "exposure"
+            else SensorCell(current.exposure_ms, values[index])
+        )
+        if cell in safe and cell.cell_id not in tested_cell_ids:
+            candidates.append(cell)
+    return candidates
 
 
 def project_safe_untested(

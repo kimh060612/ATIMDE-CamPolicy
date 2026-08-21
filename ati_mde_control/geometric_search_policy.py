@@ -13,10 +13,10 @@ from .geometric_search import (
     cell_to_point,
     contraction_target,
     expansion_target,
-    nearest_axis_cell,
     project_safe_untested,
     ranked_vertices,
     reflection_geometry,
+    symmetric_axis_candidates,
 )
 from .pairwise_policy import PairwisePolicy
 from .state import LocalEdgeState
@@ -283,10 +283,17 @@ class GeometricSearchPolicy(PairwisePolicy):
         uncertainty: float,
         safe: list[SensorCell],
     ) -> bool:
-        exposure = nearest_axis_cell(current, "exposure", safe)
-        gain = nearest_axis_cell(current, "gain", safe)
-        if exposure is None or gain is None or exposure == gain:
+        initial_tested = {current.cell_id}
+        exposure_candidates = symmetric_axis_candidates(
+            current, "exposure", safe, initial_tested, state.episode_id
+        )
+        gain_candidates = symmetric_axis_candidates(
+            current, "gain", safe, initial_tested, state.episode_id
+        )
+        if not exposure_candidates or not gain_candidates:
             return False
+        exposure = exposure_candidates[0]
+        gain = gain_candidates[0]
         state.episode_id += 1
         state.episode_active = True
         state.search_cycle_complete = False

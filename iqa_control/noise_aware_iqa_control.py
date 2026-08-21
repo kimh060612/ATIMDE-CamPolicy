@@ -166,6 +166,8 @@ class NoiseAwareNelderMead:
         self._minimum = np.array((exposure_bounds[0], gain_bounds[0]), np.float64)
         self._maximum = np.array((exposure_bounds[1], gain_bounds[1]), np.float64)
         self._step = np.array((exposure_step, gain_step), np.float64)
+        initial_point = np.array((initial.exposure_ms, initial.gain), np.float64)
+        self._grid_origin = np.clip(initial_point, self._minimum, self._maximum)
         if np.any(self._maximum - self._minimum < self._step):
             raise ValueError("Each control range must contain at least two settings.")
         self.restart_interval = restart_interval
@@ -176,7 +178,7 @@ class NoiseAwareNelderMead:
         self._evaluations_since_restart = 0
         self._phase = "initial_anchor"
         self._operation = "initial_anchor"
-        self._pending = self._quantize(np.array((initial.exposure_ms, initial.gain)))
+        self._pending = self._quantize(initial_point)
         self._initial_candidates: list[np.ndarray] = []
         self._reflection: _Vertex | None = None
         self._shrink_vertices: list[_Vertex] = []
@@ -323,8 +325,9 @@ class NoiseAwareNelderMead:
         self._phase = phase
 
     def _quantize(self, point: np.ndarray) -> np.ndarray:
-        clipped = np.clip(np.asarray(point, dtype=np.float64), self._minimum, self._maximum)
-        quantized = self._minimum + np.rint((clipped - self._minimum) / self._step) * self._step
+        quantized = self._grid_origin + np.rint(
+            (np.asarray(point, dtype=np.float64) - self._grid_origin) / self._step
+        ) * self._step
         return np.clip(quantized, self._minimum, self._maximum)
 
     @staticmethod
