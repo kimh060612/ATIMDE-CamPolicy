@@ -5,6 +5,7 @@ import math
 from hardware.utils import ContextKey, QScore, SensorCell
 
 from .config import PolicyConfig, SafetyPolicy
+from .context import LIGHT_LABEL_TO_STATE
 from .geometric_search import (
     GeometricProposal,
     GeometricProposalKind,
@@ -19,17 +20,28 @@ from .geometric_search import (
     symmetric_axis_candidates,
 )
 from .pairwise_policy import PairwisePolicy
+from .simplex_memory import SimplexMemory, SimplexSnapshot
 from .state import LocalEdgeState
 from .types import PairMode, PairStatus, PairwiseDecision, SwitchEvent
 
 
 class GeometricSearchPolicy(PairwisePolicy):
-    """Uncertainty-aware pairwise policy backed by a short-lived 2D simplex."""
+    """Uncertainty-aware pairwise policy backed by a remembered 2D simplex."""
 
-    def __init__(self, config: PolicyConfig, safety: SafetyPolicy) -> None:
+    def __init__(
+        self,
+        config: PolicyConfig,
+        safety: SafetyPolicy,
+        simplex_memory_ttl_rounds: int = 0,
+    ) -> None:
+        if simplex_memory_ttl_rounds < 0:
+            raise ValueError("Simplex memory TTL must be non-negative.")
         super().__init__(config, safety)
         self.geometric_states: dict[str, GeometricSearchState] = {}
-        self.active_context_key: str | None = None
+        self.simplex_memory = SimplexMemory()
+        self.simplex_memory_ttl_rounds = simplex_memory_ttl_rounds
+        self.current_round = 0
+        self.active_context: ContextKey | None = None
 
     def state(self, context: ContextKey) -> GeometricSearchState:
         context.validate()
@@ -40,29 +52,35 @@ class GeometricSearchPolicy(PairwisePolicy):
         return state
 
     def on_context(self, context: ContextKey) -> None:
-        """Discard simplex observations whenever the latched context changes."""
+        """Suspend the active simplex whenever the latched context changes."""
 
         context.validate()
-        key = context.table_key
-        if self.active_context_key == key:
+        if self.active_context == context:
             return
-        if self.active_context_key in self.geometric_states:
+        if self.active_context is not None:
+            previous = self.active_context
             self._end_episode(
-                self.geometric_states[self.active_context_key],
+                previous,
+                self.state(previous),
                 "context_changed",
                 wait_for_periodic=False,
             )
         state = self.state(context)
-        self._end_episode(state, "context_changed", wait_for_periodic=False)
-        self.active_context_key = key
+        self._clear_episode(state, "context_changed", wait_for_periodic=False)
+        self.active_context = context
 
     def reset_for_context_change(self, context: ContextKey) -> None:
         self._end_episode(
-            self.state(context), "context_changed", wait_for_periodic=False
+            context,
+            self.state(context),
+            "context_changed",
+            wait_for_periodic=False,
         )
 
     def begin_round(self, context: ContextKey, round_index: int) -> SwitchEvent:
-        del round_index
+        if round_index < 0:
+            raise ValueError("Round index must be non-negative.")
+        self.current_round = round_index
         state = self.state(context)
         for edge in state.local_edges.values():
             edge.invalid_cooldown = max(0, edge.invalid_cooldown - 1)
@@ -87,11 +105,29 @@ class GeometricSearchPolicy(PairwisePolicy):
             )
         current_mu, current_std = self._values(current_score)
         state.rounds_since_valid_probe += 1
-        self._refresh_vertex(state, current, current_mu, current_std)
+        self._refresh_vertex(
+            state, current, current_mu, current_std, self.current_round
+        )
+        if state.episode_active and self.simplex_memory.vertices_expired(
+            state.vertices,
+            self.current_round,
+            self.simplex_memory_ttl_rounds,
+        ):
+            self.simplex_memory.discard(context)
+            self._clear_episode(
+                state,
+                "simplex_memory_expired",
+                wait_for_periodic=False,
+            )
+        if state.episode_active:
+            self.simplex_memory.update(context, state)
 
         if state.episode_active and current_mu <= self.config.probe_trigger_threshold:
             self._end_episode(
-                state, "good_enough_risk", wait_for_periodic=False
+                context,
+                state,
+                "good_enough_risk",
+                wait_for_periodic=False,
             )
             return None
 
@@ -111,9 +147,14 @@ class GeometricSearchPolicy(PairwisePolicy):
                     else "current_only"
                 )
                 return None
-            if not self._start_episode(state, current, current_mu, current_std, safe):
+            if not self._start_episode(
+                context, state, current, current_mu, current_std, safe
+            ):
                 self._end_episode(
-                    state, "geometric_search_complete", wait_for_periodic=True
+                    context,
+                    state,
+                    "geometric_search_complete",
+                    wait_for_periodic=True,
                 )
                 return None
 
@@ -122,7 +163,7 @@ class GeometricSearchPolicy(PairwisePolicy):
             state.last_geometric_reason = "invalid_pair_recovery"
             return None
 
-        proposal = self._next_proposal(state, safe)
+        proposal = self._next_proposal(context, state, safe)
         if proposal is None:
             return None
         # Mark on selection so an apply/capture failure cannot cause the same
@@ -185,7 +226,9 @@ class GeometricSearchPolicy(PairwisePolicy):
             state.cycle_had_switch = True
             event = SwitchEvent.IMMEDIATE_COMMIT
 
-        observed = GeometricVertex(challenger, challenger_mu, challenger_std)
+        observed = GeometricVertex(
+            challenger, challenger_mu, challenger_std, round_index
+        )
         kind = proposal.kind
         if kind in (
             GeometricProposalKind.INITIAL_EXPOSURE,
@@ -225,12 +268,16 @@ class GeometricSearchPolicy(PairwisePolicy):
                 self._replace_vertex(state, proposal.replace_cell_id, observed)
             else:
                 self._end_episode(
-                    state, "contraction_failure", wait_for_periodic=True
+                    context,
+                    state,
+                    "contraction_failure",
+                    wait_for_periodic=True,
                 )
 
         if state.episode_active:
             state.probe_pending = True
             state.search_cycle_complete = False
+            self.simplex_memory.update(context, state)
         pair_z = delta_mu / max(pair_std, self.config.pending_std_floor)
         return PairwiseDecision(
             status=status,
@@ -266,7 +313,7 @@ class GeometricSearchPolicy(PairwisePolicy):
             and proposal.kind is GeometricProposalKind.CONTRACTION
             else "invalid_pair"
         )
-        self._end_episode(state, reason, wait_for_periodic=True)
+        self._end_episode(context, state, reason, wait_for_periodic=True)
         if state.consecutive_invalid_pairs >= self.config.max_consecutive_invalid_pairs:
             state.force_current_only_rounds = self.config.recovery_current_only_rounds
             state.consecutive_invalid_pairs = 0
@@ -277,18 +324,25 @@ class GeometricSearchPolicy(PairwisePolicy):
 
     def _start_episode(
         self,
+        context: ContextKey,
         state: GeometricSearchState,
         current: SensorCell,
         mu: float,
         uncertainty: float,
         safe: list[SensorCell],
     ) -> bool:
+        if self._restore_episode(
+            context, state, current, mu, uncertainty, safe
+        ):
+            return True
+
         initial_tested = {current.cell_id}
+        positive_first = context.light_state != LIGHT_LABEL_TO_STATE["normal"]
         exposure_candidates = symmetric_axis_candidates(
-            current, "exposure", safe, initial_tested, state.episode_id
+            current, "exposure", safe, initial_tested, positive_first
         )
         gain_candidates = symmetric_axis_candidates(
-            current, "gain", safe, initial_tested, state.episode_id
+            current, "gain", safe, initial_tested, positive_first
         )
         if not exposure_candidates or not gain_candidates:
             return False
@@ -303,7 +357,9 @@ class GeometricSearchPolicy(PairwisePolicy):
         # makes it impossible for any score-derived value from an older episode
         # to influence or accompany the new simplex.
         state.local_edges.clear()
-        state.vertices = [GeometricVertex(current, mu, uncertainty)]
+        state.vertices = [
+            GeometricVertex(current, mu, uncertainty, self.current_round)
+        ]
         state.tested_cell_ids = {current.cell_id}
         state.initialization_queue = [
             (GeometricProposalKind.INITIAL_EXPOSURE, exposure),
@@ -314,10 +370,119 @@ class GeometricSearchPolicy(PairwisePolicy):
         state.deferred_target = None
         state.deferred_replace_cell_id = None
         state.wait_for_periodic_reprobe = False
+        self.simplex_memory.update(context, state)
         return True
 
+    def _restore_episode(
+        self,
+        context: ContextKey,
+        state: GeometricSearchState,
+        current: SensorCell,
+        mu: float,
+        uncertainty: float,
+        safe: list[SensorCell],
+    ) -> bool:
+        safe_cells = set(safe)
+        for snapshot in self.simplex_memory.recall_candidates(
+            context,
+            self.current_round,
+            self.simplex_memory_ttl_rounds,
+        ):
+            restored = self._compatible_snapshot(
+                snapshot,
+                current,
+                mu,
+                uncertainty,
+                self.current_round,
+                safe_cells,
+            )
+            if restored is None:
+                continue
+            vertices, tested_cell_ids, initialization_queue = restored
+            state.episode_id = max(state.episode_id, snapshot.episode_id)
+            state.episode_active = True
+            state.search_cycle_complete = False
+            state.probe_pending = True
+            state.cycle_had_switch = snapshot.cycle_had_switch
+            state.local_edges.clear()
+            state.vertices = vertices
+            state.tested_cell_ids = tested_cell_ids
+            state.initialization_queue = initialization_queue
+            state.pending_proposal = None
+            state.deferred_kind = snapshot.deferred_kind
+            state.deferred_target = snapshot.deferred_target
+            state.deferred_replace_cell_id = snapshot.deferred_replace_cell_id
+            state.wait_for_periodic_reprobe = False
+            self.simplex_memory.update(context, state)
+            return True
+        return False
+
+    @staticmethod
+    def _compatible_snapshot(
+        snapshot: SimplexSnapshot,
+        current: SensorCell,
+        mu: float,
+        uncertainty: float,
+        observed_round: int,
+        safe_cells: set[SensorCell],
+    ) -> tuple[
+        list[GeometricVertex],
+        set[str],
+        list[tuple[GeometricProposalKind, SensorCell]],
+    ] | None:
+        if not snapshot.vertices or any(
+            vertex.cell not in safe_cells for vertex in snapshot.vertices
+        ):
+            return None
+
+        vertices = list(snapshot.vertices)
+        tested_cell_ids = set(snapshot.tested_cell_ids)
+        initialization_queue = [
+            (kind, cell)
+            for kind, cell in snapshot.initialization_queue
+            if cell in safe_cells and cell.cell_id not in tested_cell_ids
+        ]
+
+        for index, vertex in enumerate(vertices):
+            if vertex.cell == current:
+                vertices[index] = GeometricVertex(
+                    current, mu, uncertainty, observed_round
+                )
+                break
+        else:
+            if len(vertices) < 3:
+                vertices.append(
+                    GeometricVertex(current, mu, uncertainty, observed_round)
+                )
+                initialization_queue = [
+                    item for item in initialization_queue if item[1] != current
+                ]
+        tested_cell_ids.add(current.cell_id)
+
+        if len(vertices) < 3:
+            available = {vertex.cell.cell_id for vertex in vertices}
+            available.update(cell.cell_id for _, cell in initialization_queue)
+            if len(available) < 3:
+                return None
+        else:
+            initialization_queue = []
+
+        if snapshot.deferred_kind is not None:
+            vertex_ids = {vertex.cell.cell_id for vertex in vertices}
+            if (
+                len(vertices) != 3
+                or snapshot.deferred_target is None
+                or snapshot.deferred_replace_cell_id not in vertex_ids
+            ):
+                return None
+
+        return vertices, tested_cell_ids, initialization_queue
+
     def _next_proposal(
-        self, state: GeometricSearchState, safe: list[SensorCell]
+        self,
+        context: ContextKey,
+        state: GeometricSearchState,
+        safe: list[SensorCell],
     ) -> GeometricProposal | None:
         if state.deferred_kind is not None:
             kind = state.deferred_kind
@@ -335,7 +500,9 @@ class GeometricSearchPolicy(PairwisePolicy):
                     if kind is GeometricProposalKind.CONTRACTION
                     else "geometric_search_complete"
                 )
-                self._end_episode(state, reason, wait_for_periodic=True)
+                self._end_episode(
+                    context, state, reason, wait_for_periodic=True
+                )
                 return None
             return GeometricProposal(cell, kind, target, replace_cell_id=replace)
 
@@ -347,7 +514,10 @@ class GeometricSearchPolicy(PairwisePolicy):
                 )
         if len(state.vertices) != 3:
             self._end_episode(
-                state, "geometric_search_complete", wait_for_periodic=True
+                context,
+                state,
+                "geometric_search_complete",
+                wait_for_periodic=True,
             )
             return None
 
@@ -355,7 +525,10 @@ class GeometricSearchPolicy(PairwisePolicy):
         cell = project_safe_untested(target, safe, state.tested_cell_ids)
         if cell is None:
             self._end_episode(
-                state, "geometric_search_complete", wait_for_periodic=True
+                context,
+                state,
+                "geometric_search_complete",
+                wait_for_periodic=True,
             )
             return None
         return GeometricProposal(
@@ -407,12 +580,15 @@ class GeometricSearchPolicy(PairwisePolicy):
         cell: SensorCell,
         mu: float,
         uncertainty: float,
+        observed_round: int,
     ) -> None:
         if not state.episode_active:
             return
         for index, vertex in enumerate(state.vertices):
             if vertex.cell == cell:
-                state.vertices[index] = GeometricVertex(cell, mu, uncertainty)
+                state.vertices[index] = GeometricVertex(
+                    cell, mu, uncertainty, observed_round
+                )
                 return
 
     @staticmethod
@@ -445,8 +621,22 @@ class GeometricSearchPolicy(PairwisePolicy):
             raise RuntimeError(f"Simplex vertex {replace_cell_id} is missing.")
         state.vertices = updated
 
-    @staticmethod
     def _end_episode(
+        self,
+        context: ContextKey,
+        state: GeometricSearchState,
+        reason: str,
+        *,
+        wait_for_periodic: bool,
+    ) -> None:
+        # A selected but unresolved proposal has no risk observation yet. Keep
+        # the last stable snapshot instead of caching an incomplete mutation.
+        if state.pending_proposal is None:
+            self.simplex_memory.update(context, state)
+        self._clear_episode(state, reason, wait_for_periodic=wait_for_periodic)
+
+    @staticmethod
+    def _clear_episode(
         state: GeometricSearchState,
         reason: str,
         *,

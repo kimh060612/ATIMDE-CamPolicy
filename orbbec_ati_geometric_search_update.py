@@ -25,8 +25,19 @@ def parse_args() -> argparse.Namespace:
         description="Geometric pairwise Orbbec camera control with current-score reuse."
     )
     configure_parser(parser)
+    parser.add_argument(
+        "--simplex-memory-ttl-rounds",
+        type=int,
+        default=0,
+        help=(
+            "Discard a remembered simplex when any vertex score is this many "
+            "control rounds old; 0 disables expiry."
+        ),
+    )
     args = parser.parse_args()
     validate_args(parser, args)
+    if args.simplex_memory_ttl_rounds < 0:
+        parser.error("--simplex-memory-ttl-rounds must be non-negative.")
     return args
 
 
@@ -54,7 +65,9 @@ def build_experiment(args: argparse.Namespace) -> GeometricSearchUpdateExperimen
         config.local_files_only,
     )
     policy = GeometricSearchPolicy(
-        config.policy, SafetyPolicy.from_json(config.safety_path)
+        config.policy,
+        SafetyPolicy.from_json(config.safety_path),
+        simplex_memory_ttl_rounds=args.simplex_memory_ttl_rounds,
     )
     capture_runner = CaptureRunner(
         camera, context_provider, config.max_pair_capture_gap_ms

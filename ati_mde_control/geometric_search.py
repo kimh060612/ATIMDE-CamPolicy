@@ -26,6 +26,7 @@ class GeometricVertex:
     cell: SensorCell
     mu: float
     uncertainty: float
+    observed_round: int = 0
 
 
 @dataclass(frozen=True)
@@ -75,13 +76,12 @@ def symmetric_axis_candidates(
     axis: str,
     safe_cells: Iterable[SensorCell],
     tested_cell_ids: set[str],
-    episode_id: int,
+    positive_first: bool,
 ) -> list[SensorCell]:
-    """Return safe, untested ±1 neighbors in neutral deterministic order.
+    """Return safe, untested ±1 neighbors in caller-selected order.
 
-    Even episodes consider the positive neighbor first and odd episodes the
-    negative neighbor first.  No feasible-span, lighting, or score prior is
-    used, and an unselected opposite neighbor remains untested.
+    No feasible-span or score prior is used, and an unselected opposite
+    neighbor remains untested.
     """
 
     safe = set(safe_cells)
@@ -96,7 +96,7 @@ def symmetric_axis_candidates(
     else:
         raise ValueError(f"Unknown geometric axis: {axis}")
 
-    directions = (1, -1) if episode_id % 2 == 0 else (-1, 1)
+    directions = (1, -1) if positive_first else (-1, 1)
     candidates: list[SensorCell] = []
     for direction in directions:
         index = current_index + direction
