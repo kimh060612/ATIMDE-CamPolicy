@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
 
-from hardware.utils import ALL_CELLS, ContextKey, QScore, SensorCell
+from hardware.utils import (
+    ALL_CELLS,
+    EXPOSURE_MS_VALUES,
+    GAIN_VALUES,
+    ContextKey,
+    QScore,
+    SensorCell,
+)
 from iqa_control.noise_aware_iqa_control import ControlSetting, NoiseAwareNelderMead
 
 from .config import SafetyPolicy
@@ -177,6 +185,13 @@ class ContextualRiskNelderMeadPolicy:
         self.safety_policy = safety_policy
         self.default_cell = default_cell
         self._controllers: dict[ContextKey, SafetyAwareRiskNelderMead] = {}
+        self._brightness_cells: dict[
+            ContextKey, tuple[tuple[SensorCell, ...], bool]
+        ] = {}
+        self._forced_cells: dict[ContextKey, tuple[SensorCell, str]] = {}
+        self._issued: dict[
+            ContextKey, tuple[SensorCell, SensorCell, str]
+        ] = {}
         self.last_update_status = "not_observed"
 
     def safe_cells(self, context: ContextKey) -> tuple[SensorCell, ...]:
@@ -188,10 +203,27 @@ class ContextualRiskNelderMeadPolicy:
         )
 
     def next_cell(self, context: ContextKey) -> SensorCell:
-        return self._controller(context).next_cell()
+        desired = self._controller(context).next_cell()
+        forced = self._forced_cells.pop(context, None)
+        if forced is not None:
+            selected, operation = forced
+        elif context in self._brightness_cells:
+            cells, prefer_brighter = self._brightness_cells[context]
+            selected = self._nearest_admissible(desired, cells, prefer_brighter)
+            operation = (
+                self._controller(context).operation
+                if selected == desired
+                else "brightness_filter"
+            )
+        else:
+            selected = desired
+            operation = self._controller(context).operation
+        self._issued[context] = (selected, desired, operation)
+        return selected
 
     def operation(self, context: ContextKey) -> str:
-        return self._controller(context).operation
+        issued = self._issued.get(context)
+        return issued[2] if issued is not None else self._controller(context).operation
 
     def best_cell(self, context: ContextKey) -> SensorCell:
         return self._controller(context).best_cell
@@ -205,8 +237,8 @@ class ContextualRiskNelderMeadPolicy:
         cell: SensorCell,
         score: QScore,
     ) -> bool:
-        controller = self._controller(context)
-        if cell != controller.next_cell():
+        issued = self._issued.get(context)
+        if issued is None or cell != issued[0]:
             raise ValueError(
                 "Nelder-Mead observation does not match its pending camera cell."
             )
@@ -218,9 +250,89 @@ class ContextualRiskNelderMeadPolicy:
         if not all(math.isfinite(value) for value in values):
             self.last_update_status = "non_finite_score"
             return False
+        controller = self._controllers.get(context)
+        if (
+            controller is None
+            or cell != issued[1]
+            or issued[2].startswith("brightness_recovery")
+        ):
+            controller = SafetyAwareRiskNelderMead(
+                cell,
+                self.safe_cells(context),
+                self.config,
+            )
+            self._controllers[context] = controller
         controller.observe_q(values[0])
+        self._issued.pop(context, None)
         self.last_update_status = "updated"
         return True
+
+    def configure_brightness(
+        self,
+        context: ContextKey,
+        current_cell: SensorCell,
+        admissible_cells: Sequence[SensorCell],
+        prefer_brighter: bool,
+        *,
+        forced_cell: SensorCell | None = None,
+        recovery_unavailable: bool = False,
+        reset: bool = False,
+    ) -> None:
+        hard_safe = self.safe_cells(context)
+        allowed = set(admissible_cells)
+        cells = tuple(cell for cell in hard_safe if cell in allowed)
+        if current_cell in hard_safe and current_cell not in cells:
+            cells += (current_cell,)
+        if not cells:
+            cells = (min(hard_safe, key=lambda cell: cell.cell_id),)
+        self._brightness_cells[context] = (cells, prefer_brighter)
+        if reset:
+            self.reset_for_brightness_change(context)
+        if forced_cell is not None:
+            if forced_cell not in cells:
+                raise ValueError(
+                    "A forced brightness recovery cell must be admissible and hard-safe."
+                )
+            self._forced_cells[context] = (forced_cell, "brightness_recovery")
+        elif recovery_unavailable:
+            self._forced_cells[context] = (
+                current_cell,
+                "brightness_recovery_unavailable",
+            )
+        else:
+            self._forced_cells.pop(context, None)
+
+    def reset_for_brightness_change(self, context: ContextKey) -> None:
+        context.validate()
+        self._controllers.pop(context, None)
+
+    @staticmethod
+    def _nearest_admissible(
+        desired: SensorCell,
+        cells: tuple[SensorCell, ...],
+        prefer_brighter: bool,
+    ) -> SensorCell:
+        desired_point = (
+            EXPOSURE_MS_VALUES.index(desired.exposure_ms),
+            GAIN_VALUES.index(desired.gain),
+        )
+        return min(
+            cells,
+            key=lambda cell: (
+                (EXPOSURE_MS_VALUES.index(cell.exposure_ms) - desired_point[0]) ** 2
+                + (GAIN_VALUES.index(cell.gain) - desired_point[1]) ** 2,
+                -(
+                    EXPOSURE_MS_VALUES.index(cell.exposure_ms)
+                    + GAIN_VALUES.index(cell.gain)
+                )
+                if prefer_brighter
+                else (
+                    EXPOSURE_MS_VALUES.index(cell.exposure_ms)
+                    + GAIN_VALUES.index(cell.gain)
+                ),
+                cell.cell_id,
+            ),
+        )
 
     def _controller(self, context: ContextKey) -> SafetyAwareRiskNelderMead:
         context.validate()

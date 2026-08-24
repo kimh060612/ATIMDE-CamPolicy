@@ -4,6 +4,10 @@ from pathlib import Path
 import numpy as np
 
 from ati_mde_control.capture_runner import CaptureRunner
+from ati_mde_control.brightness_safety import (
+    BrightnessGuardConfig,
+    BrightnessGuardMode,
+)
 from ati_mde_control.config import ExperimentConfig, PolicyConfig, SafetyPolicy
 from ati_mde_control.geometric_search import (
     GeometricProposalKind,
@@ -689,7 +693,7 @@ class Provider:
 class Camera:
     exposure_value_per_ms = 1000.0
 
-    def __init__(self, events, provider) -> None:
+    def __init__(self, events, provider, image_value=None) -> None:
         self.events = events
         self.provider = provider
         self.active_cell = None
@@ -700,6 +704,7 @@ class Camera:
         self.depth_frame_number = 0
         self.setting_effective = True
         self.sensor_settle_ms = 0.0
+        self.image_value = image_value
 
     def apply_cell(self, cell):
         self.active_cell = cell
@@ -713,7 +718,12 @@ class Camera:
         self.color_timestamp_us += 1000
         self.depth_timestamp_us = self.color_timestamp_us
         self.color_frame_number = self.depth_frame_number = self.capture_count
-        image = np.full((2, 2, 3), self.capture_count, dtype=np.uint8)
+        value = self.capture_count if self.image_value is None else self.image_value
+        image = (
+            value.copy()
+            if isinstance(value, np.ndarray)
+            else np.full((8, 8, 3), value, dtype=np.uint8)
+        )
         return image, np.ones((2, 2), dtype=np.float32)
 
     def close(self):
@@ -791,13 +801,20 @@ def make_config() -> ExperimentConfig:
     )
 
 
-def make_experiment(results, *, safety=None, on_predict=None):
+def make_experiment(
+    results,
+    *,
+    safety=None,
+    on_predict=None,
+    brightness_guard_config=None,
+    image_value=None,
+):
     events = []
     provider = Provider()
     config = make_config()
     policy = GeometricSearchPolicy(config.policy, safety or SafetyPolicy())
     predictor = Predictor(events, results, provider, on_predict)
-    camera = Camera(events, provider)
+    camera = Camera(events, provider, image_value)
     runtime = GeometricSearchUpdateExperiment(
         config,
         CaptureRunner(camera, provider, config.max_pair_capture_gap_ms),
@@ -805,6 +822,7 @@ def make_experiment(results, *, safety=None, on_predict=None):
         policy,
         Logger(),
         Evaluator(),
+        brightness_guard_config=brightness_guard_config,
     )
     return runtime, events, provider, predictor, policy
 
@@ -882,6 +900,133 @@ class GeometricSearchUpdateExperimentTest(unittest.TestCase):
         self.assertEqual(predictor.calls, 1)
         self.assertEqual(sum(event.startswith("capture:") for event in events), 1)
         self.assertEqual(policy.state(ContextKey(0, 0)).vertices, [])
+
+    def test_log_mode_preserves_the_legacy_proposal(self) -> None:
+        baseline, *_ = make_experiment([score(0.20), score(0.10)])
+        logged, *_ = make_experiment(
+            [score(0.20), score(0.10)],
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.LOG
+            ),
+        )
+
+        baseline_result = baseline.run_round()
+        logged_result = logged.run_round()
+
+        self.assertEqual(logged_result.challenger.cell, baseline_result.challenger.cell)
+        self.assertEqual(logged.logger.rows[0]["brightness_guard_mode"], "log")
+
+    def test_filter_mode_never_selects_outside_the_admissible_envelope(self) -> None:
+        runtime, _, _, _, _ = make_experiment(
+            [score(0.20), score(0.10)],
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.FILTER,
+                ema_alpha=1.0,
+            ),
+            image_value=0,
+        )
+
+        result = runtime.run_round()
+
+        self.assertEqual(result.challenger.cell, SensorCell(32, 64))
+        self.assertEqual(runtime.logger.rows[0]["brightness_state"], "severe_under")
+
+    def test_enforce_recovery_commits_even_with_a_worse_learned_score(self) -> None:
+        runtime, _, _, _, policy = make_experiment(
+            [score(0.05), score(0.90)],
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.ENFORCE,
+                ema_alpha=1.0,
+            ),
+            image_value=255,
+        )
+
+        result = runtime.run_round()
+
+        self.assertEqual(result.challenger.cell, SensorCell(8, 64))
+        self.assertEqual(result.decision.selected_cell, SensorCell(8, 64))
+        self.assertEqual(result.decision.status, PairStatus.CHALLENGER_WON)
+        self.assertEqual(runtime.last_applied_cell, SensorCell(8, 64))
+        self.assertEqual(policy.state(ContextKey(0, 0)).vertices, [])
+        self.assertIsNone(policy.simplex_memory.exact(ContextKey(0, 0)))
+
+    def test_ordinary_overexposure_still_uses_the_learned_switch_decision(self) -> None:
+        image = np.full((8, 8, 3), 100, np.uint8)
+        image[0, :2] = 255
+        runtime, _, _, _, _ = make_experiment(
+            [score(0.20), score(0.90)],
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.ENFORCE,
+                ema_alpha=1.0,
+            ),
+            image_value=image,
+        )
+
+        result = runtime.run_round()
+
+        self.assertEqual(runtime.logger.rows[0]["brightness_state"], "over")
+        self.assertEqual(result.decision.status, PairStatus.CURRENT_WON)
+        self.assertEqual(result.decision.selected_cell, SensorCell(16, 64))
+
+    def test_unavailable_recovery_holds_the_only_hard_safe_cell(self) -> None:
+        safety = SafetyPolicy(
+            max_exposure_ms_by_motion=(4,) * 5,
+            allowed_gains_by_light=((16,),) * 3,
+        )
+        runtime, _, _, _, _ = make_experiment(
+            [score(0.20)],
+            safety=safety,
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.ENFORCE,
+                ema_alpha=1.0,
+            ),
+            image_value=255,
+        )
+
+        result = runtime.run_round()
+
+        self.assertIsNone(result.challenger)
+        self.assertEqual(result.initial.cell, SensorCell(4, 16))
+        self.assertEqual(runtime.logger.rows[0]["brightness_recovery_available"], 0)
+
+    def test_brightness_reset_discards_simplex_and_memory(self) -> None:
+        context = ContextKey(0, 0)
+        policy = GeometricSearchPolicy(PolicyConfig(), SafetyPolicy())
+        current = SensorCell(16, 64)
+        self.assertIsNotNone(
+            policy.proposal_after_current(context, current, score(0.30))
+        )
+        self.assertIsNotNone(policy.simplex_memory.exact(context))
+
+        policy.reset_for_brightness_change(context)
+
+        self.assertEqual(policy.state(context).vertices, [])
+        self.assertIsNone(policy.simplex_memory.exact(context))
+
+    def test_state_transition_does_not_reuse_old_vertex_scores(self) -> None:
+        context = ContextKey(0, 0)
+        runtime, _, _, _, policy = make_experiment(
+            [score(0.30), score(0.40), score(0.80), score(0.90)],
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.FILTER,
+                ema_alpha=1.0,
+            ),
+            image_value=100,
+        )
+        runtime.run_round()
+        self.assertEqual(
+            {vertex.mu for vertex in policy.state(context).vertices},
+            {0.30, 0.40},
+        )
+
+        runtime.capture_runner.camera.image_value = 255
+        runtime.run_round()
+
+        self.assertEqual(runtime.logger.rows[-1]["brightness_state_changed"], 1)
+        self.assertEqual(
+            {vertex.mu for vertex in policy.state(context).vertices},
+            {0.80, 0.90},
+        )
 
 
 if __name__ == "__main__":

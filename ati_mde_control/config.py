@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from hardware.utils import (
 )
 
 from .types import SearchAxis
+from .brightness_safety import BrightnessGuardConfig
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,7 @@ class SafetyPolicy:
     max_exposure_ms_by_motion: tuple[int, ...] = (32,) * MOTION_STATE_COUNT
     allowed_gains_by_light: tuple[tuple[int, ...], ...] = (GAIN_VALUES,) * LIGHT_STATE_COUNT
     disabled_cells_by_context: dict[str, frozenset[str]] = field(default_factory=dict)
+    brightness_guard: BrightnessGuardConfig = field(default_factory=BrightnessGuardConfig)
 
     @classmethod
     def from_json(cls, path: Path | None) -> "SafetyPolicy":
@@ -34,11 +37,27 @@ class SafetyPolicy:
         exposures = tuple(int(value) for value in payload.get(
             "max_exposure_ms_by_motion", [32] * MOTION_STATE_COUNT
         ))
-        gains = tuple(tuple(int(value) for value in values) for values in payload.get(
-            "allowed_gains_by_light", [list(GAIN_VALUES) for _ in range(LIGHT_STATE_COUNT)]
-        ))
+        global_gains = payload.get("allowed_gains")
+        if global_gains is not None:
+            if "allowed_gains_by_light" in payload:
+                warnings.warn(
+                    "Both allowed_gains and allowed_gains_by_light are set; allowed_gains takes precedence.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            one_gain_set = tuple(int(value) for value in global_gains)
+            gains = (one_gain_set,) * LIGHT_STATE_COUNT
+        else:
+            gains = tuple(tuple(int(value) for value in values) for values in payload.get(
+                "allowed_gains_by_light", [list(GAIN_VALUES) for _ in range(LIGHT_STATE_COUNT)]
+            ))
         if len(exposures) != MOTION_STATE_COUNT or len(gains) != LIGHT_STATE_COUNT:
             raise ValueError("Safety configuration has the wrong context dimensions.")
+        unknown_gains = {gain for values in gains for gain in values} - set(GAIN_VALUES)
+        if unknown_gains:
+            raise ValueError(f"Unknown camera gains: {sorted(unknown_gains)}")
+        if any(not values for values in gains):
+            raise ValueError("Every safety gain set must contain at least one gain.")
         disabled: dict[str, frozenset[str]] = {}
         for key, entries in payload.get("disabled_cells_by_context", {}).items():
             ids = frozenset(
@@ -49,7 +68,10 @@ class SafetyPolicy:
             if unknown:
                 raise ValueError(f"Unknown disabled cells: {sorted(unknown)}")
             disabled[str(key)] = ids
-        return cls(exposures, gains, disabled)
+        brightness_guard = BrightnessGuardConfig.from_mapping(
+            payload.get("brightness_guard")
+        )
+        return cls(exposures, gains, disabled, brightness_guard)
 
     def safe_cells(self, context: ContextKey) -> list[SensorCell]:
         context.validate()

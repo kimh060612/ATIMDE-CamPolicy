@@ -100,6 +100,40 @@ class ContextualRiskNelderMeadPolicyTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "at least three safe cells"):
             policy.next_cell(ContextKey(0, 0))
 
+    def test_brightness_filter_projects_pending_cell_and_restarts_at_capture(self) -> None:
+        policy = self.make_policy()
+        context = ContextKey(0, 0)
+        current = policy.next_cell(context)
+        policy.observe(context, current, score(0.5))
+        old_controller = policy._controllers[context]
+        policy.configure_brightness(
+            context,
+            current,
+            (current,),
+            prefer_brighter=False,
+            reset=True,
+        )
+        self.assertEqual(policy.next_cell(context), current)
+        self.assertTrue(policy.observe(context, current, score(0.4)))
+        self.assertIsNot(policy._controllers[context], old_controller)
+        self.assertEqual(policy.best_risk(context), 0.4)
+
+    def test_forced_brightness_recovery_overrides_pending_simplex_cell(self) -> None:
+        policy = self.make_policy()
+        context = ContextKey(0, 0)
+        current = policy.next_cell(context)
+        policy.observe(context, current, score(0.1))
+        recovery = SensorCell(8, 64)
+        policy.configure_brightness(
+            context,
+            current,
+            (current, recovery),
+            prefer_brighter=False,
+            forced_cell=recovery,
+        )
+        self.assertEqual(policy.next_cell(context), recovery)
+        self.assertEqual(policy.operation(context), "brightness_recovery")
+
 
 if __name__ == "__main__":
     unittest.main()

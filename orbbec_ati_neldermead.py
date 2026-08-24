@@ -87,12 +87,13 @@ def build_experiment(args: argparse.Namespace) -> RiskNelderMeadExperiment:
         config.q_uncertainty_weight,
         config.local_files_only,
     )
+    safety_policy = SafetyPolicy.from_json(config.safety_path)
     policy = ContextualRiskNelderMeadPolicy(
         RiskNelderMeadConfig(
             restart_frames=args.simplex_restart_frames,
             simplex_tolerance=args.simplex_tolerance,
         ),
-        SafetyPolicy.from_json(config.safety_path),
+        safety_policy,
         config.default_cell,
     )
     capture_runner = CaptureRunner(
@@ -113,6 +114,7 @@ def build_experiment(args: argparse.Namespace) -> RiskNelderMeadExperiment:
         policy,
         logger,
         evaluator,
+        safety_policy.brightness_guard,
     )
 
 

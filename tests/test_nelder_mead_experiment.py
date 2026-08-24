@@ -8,6 +8,10 @@ from unittest.mock import patch
 import numpy as np
 
 from ati_mde_control.capture_runner import CaptureRunner
+from ati_mde_control.brightness_safety import (
+    BrightnessGuardConfig,
+    BrightnessGuardMode,
+)
 from ati_mde_control.config import ExperimentConfig, PolicyConfig, SafetyPolicy
 from ati_mde_control.full_depth_predictor import FullDepthBatchPrediction
 from ati_mde_control.nelder_mead_experiment import RiskNelderMeadExperiment
@@ -35,10 +39,11 @@ class Provider:
 class Camera:
     exposure_value_per_ms = 1000.0
 
-    def __init__(self, events, provider, on_capture=None):
+    def __init__(self, events, provider, on_capture=None, image_value=0):
         self.events = events
         self.provider = provider
         self.on_capture = on_capture
+        self.image_value = image_value
         self.capture_count = 0
         self.setting_effective = True
         self.sensor_settle_ms = 0.0
@@ -56,7 +61,10 @@ class Camera:
             self.on_capture(self.provider)
         self.color_frame_number = self.depth_frame_number = self.capture_count
         self.color_timestamp_us = self.depth_timestamp_us = self.capture_count * 1000
-        return np.zeros((2, 2, 3), np.uint8), np.ones((2, 2), np.float32)
+        return (
+            np.full((2, 2, 3), self.image_value, np.uint8),
+            np.ones((2, 2), np.float32),
+        )
 
     def close(self):
         pass
@@ -140,11 +148,18 @@ def config(output_dir=Path("unused")):
     )
 
 
-def make_experiment(scores, safety=None, on_capture=None):
+def make_experiment(
+    scores,
+    safety=None,
+    on_capture=None,
+    *,
+    image_value=0,
+    brightness_guard_config=None,
+):
     events = []
     temporary = TemporaryDirectory()
     provider = Provider()
-    camera = Camera(events, provider, on_capture)
+    camera = Camera(events, provider, on_capture, image_value)
     predictor = Predictor(events, scores)
     logger = Logger(events)
     cfg = config(Path(temporary.name))
@@ -160,6 +175,7 @@ def make_experiment(scores, safety=None, on_capture=None):
         policy,
         logger,
         Evaluator(events),
+        brightness_guard_config,
     )
     runtime._test_temporary = temporary
     return runtime, events, provider, camera, predictor, policy, logger
@@ -234,6 +250,36 @@ class RiskNelderMeadExperimentTest(unittest.TestCase):
         runtime.run_round()
         self.assertEqual(runtime.finalize(), Path("result.csv"))
         self.assertLess(events.index("evaluate"), events.index("write"))
+
+    def test_log_mode_records_brightness_without_changing_nelder_mead_cells(self):
+        scores = [QScore(0.3, 0.1, 0.1), QScore(0.2, 0.1, 0.1)]
+        legacy = make_experiment(list(scores), image_value=255)[0]
+        logged, _, _, _, _, _, logger = make_experiment(
+            list(scores),
+            image_value=255,
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.LOG
+            ),
+        )
+        legacy_cells = [legacy.run_round().frame.cell for _ in range(2)]
+        logged_cells = [logged.run_round().frame.cell for _ in range(2)]
+        self.assertEqual(logged_cells, legacy_cells)
+        self.assertEqual(logger.rows[0]["brightness_state"], "severe_over")
+
+    def test_enforce_mode_schedules_severe_over_recovery_next_round(self):
+        runtime, _, _, _, _, _, logger = make_experiment(
+            [QScore(0.3, 0.1, 0.1), QScore(9.0, 8.0, 1.0)],
+            image_value=255,
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.ENFORCE
+            ),
+        )
+        first = runtime.run_round()
+        second = runtime.run_round()
+        self.assertEqual(first.frame.cell, SensorCell(16, 64))
+        self.assertEqual(second.frame.cell, SensorCell(8, 64))
+        self.assertEqual(second.operation, "brightness_recovery")
+        self.assertEqual(logger.rows[0]["brightness_force_recovery"], 1)
 
 
 class RiskNelderMeadEntrypointTest(unittest.TestCase):

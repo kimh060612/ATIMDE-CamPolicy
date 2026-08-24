@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 from hardware.utils import ContextKey, QScore, SensorCell
 
@@ -42,6 +43,7 @@ class GeometricSearchPolicy(PairwisePolicy):
         self.simplex_memory_ttl_rounds = simplex_memory_ttl_rounds
         self.current_round = 0
         self.active_context: ContextKey | None = None
+        self._brightness_cold_starts: set[ContextKey] = set()
 
     def state(self, context: ContextKey) -> GeometricSearchState:
         context.validate()
@@ -77,6 +79,18 @@ class GeometricSearchPolicy(PairwisePolicy):
             wait_for_periodic=False,
         )
 
+    def reset_for_brightness_change(
+        self,
+        context: ContextKey,
+        reason: str = "brightness_state_changed",
+    ) -> None:
+        """Discard scores observed under the previous brightness envelope."""
+
+        state = self.state(context)
+        self.simplex_memory.discard(context)
+        self._clear_episode(state, reason, wait_for_periodic=False)
+        self._brightness_cold_starts.add(context)
+
     def begin_round(self, context: ContextKey, round_index: int) -> SwitchEvent:
         if round_index < 0:
             raise ValueError("Round index must be non-negative.")
@@ -94,15 +108,42 @@ class GeometricSearchPolicy(PairwisePolicy):
         current_score: QScore,
         *,
         allow_probe: bool = True,
+        admissible_cells: Sequence[SensorCell] | None = None,
+        prefer_brighter: bool | None = None,
+        forced_challenger: SensorCell | None = None,
     ) -> SensorCell | None:
         """Observe the reused current score and select at most one challenger."""
 
         state = self.state(context)
-        safe = self.safety.safe_cells(context)
-        if current not in safe:
+        hard_safe = self.safety.safe_cells(context)
+        if current not in hard_safe:
             raise RuntimeError(
                 f"Current cell {current.cell_id} is unsafe for {context.table_key}."
             )
+        if admissible_cells is None:
+            safe = hard_safe
+        else:
+            admissible = set(admissible_cells)
+            safe = [cell for cell in hard_safe if cell in admissible]
+            if current not in safe:
+                safe.append(current)
+        if forced_challenger is not None:
+            if forced_challenger == current or forced_challenger not in safe:
+                raise ValueError("Forced brightness recovery must be an admissible hard-safe challenger.")
+            self.simplex_memory.discard(context)
+            self._clear_episode(
+                state,
+                GeometricProposalKind.BRIGHTNESS_RECOVERY.value,
+                wait_for_periodic=False,
+            )
+            state.pending_proposal = GeometricProposal(
+                forced_challenger,
+                GeometricProposalKind.BRIGHTNESS_RECOVERY,
+                tuple(map(float, cell_to_point(forced_challenger))),
+            )
+            state.probe_pending = True
+            state.last_geometric_reason = GeometricProposalKind.BRIGHTNESS_RECOVERY.value
+            return forced_challenger
         current_mu, current_std = self._values(current_score)
         state.rounds_since_valid_probe += 1
         self._refresh_vertex(
@@ -148,7 +189,13 @@ class GeometricSearchPolicy(PairwisePolicy):
                 )
                 return None
             if not self._start_episode(
-                context, state, current, current_mu, current_std, safe
+                context,
+                state,
+                current,
+                current_mu,
+                current_std,
+                safe,
+                prefer_brighter,
             ):
                 self._end_episode(
                     context,
@@ -199,13 +246,13 @@ class GeometricSearchPolicy(PairwisePolicy):
             self.config.switch_margin
             + self.config.pair_uncertainty_weight * pair_std
         )
-        status = (
-            PairStatus.CHALLENGER_WON
-            if delta_mu > margin
-            else PairStatus.CURRENT_WON
-            if delta_mu < -margin
-            else PairStatus.AMBIGUOUS
-        )
+        forced_recovery = proposal.kind is GeometricProposalKind.BRIGHTNESS_RECOVERY
+        if forced_recovery or delta_mu > margin:
+            status = PairStatus.CHALLENGER_WON
+        elif delta_mu < -margin:
+            status = PairStatus.CURRENT_WON
+        else:
+            status = PairStatus.AMBIGUOUS
         edge = state.local_edges.setdefault(
             (current.cell_id, challenger.cell_id), LocalEdgeState()
         )
@@ -225,6 +272,20 @@ class GeometricSearchPolicy(PairwisePolicy):
             state.active_cell_id = challenger.cell_id
             state.cycle_had_switch = True
             event = SwitchEvent.IMMEDIATE_COMMIT
+
+        if forced_recovery:
+            pair_z = delta_mu / max(pair_std, self.config.pending_std_floor)
+            self.reset_for_brightness_change(context, "brightness_recovery_complete")
+            return PairwiseDecision(
+                status=status,
+                selected_cell=challenger,
+                delta_mu=delta_mu,
+                pair_std=pair_std,
+                effective_margin=margin,
+                pair_mode=pair_mode or PairMode.NORMAL_SEARCH,
+                switch_event=SwitchEvent.IMMEDIATE_COMMIT,
+                pair_z=pair_z,
+            )
 
         observed = GeometricVertex(
             challenger, challenger_mu, challenger_std, round_index
@@ -330,14 +391,21 @@ class GeometricSearchPolicy(PairwisePolicy):
         mu: float,
         uncertainty: float,
         safe: list[SensorCell],
+        prefer_brighter: bool | None,
     ) -> bool:
-        if self._restore_episode(
+        cold_start = context in self._brightness_cold_starts
+        self._brightness_cold_starts.discard(context)
+        if not cold_start and self._restore_episode(
             context, state, current, mu, uncertainty, safe
         ):
             return True
 
         initial_tested = {current.cell_id}
-        positive_first = context.light_state != LIGHT_LABEL_TO_STATE["normal"]
+        positive_first = (
+            context.light_state != LIGHT_LABEL_TO_STATE["normal"]
+            if prefer_brighter is None
+            else prefer_brighter
+        )
         exposure_candidates = symmetric_axis_candidates(
             current, "exposure", safe, initial_tested, positive_first
         )

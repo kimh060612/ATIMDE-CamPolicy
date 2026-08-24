@@ -9,6 +9,10 @@ from unittest.mock import patch
 import numpy as np
 
 from ati_mde_control.capture_runner import CaptureRunner
+from ati_mde_control.brightness_safety import (
+    BrightnessGuardConfig,
+    BrightnessGuardMode,
+)
 from ati_mde_control.config import ExperimentConfig, PolicyConfig, SafetyPolicy
 from ati_mde_control.full_depth_predictor import FullDepthBatchPrediction
 from ati_mde_control.logging import CaptureLogger as RealCaptureLogger
@@ -46,6 +50,7 @@ class Camera:
         on_capture=None,
         fail_apply_on=None,
         fail_capture_on=None,
+        image_value=None,
     ) -> None:
         self.events = events
         self.provider = provider
@@ -53,6 +58,7 @@ class Camera:
         self.on_capture = on_capture
         self.fail_apply_on = fail_apply_on
         self.fail_capture_on = fail_capture_on
+        self.image_value = image_value
         self.active_cell = None
         self.capture_count = 0
         self.apply_count = 0
@@ -87,7 +93,8 @@ class Camera:
             if isinstance(self.effective, list)
             else self.effective
         )
-        image = np.full((2, 2, 3), self.capture_count, dtype=np.uint8)
+        value = self.capture_count if self.image_value is None else self.image_value
+        image = np.full((2, 2, 3), value, dtype=np.uint8)
         return image, np.ones((2, 2), dtype=np.float32)
 
     def close(self):
@@ -201,7 +208,9 @@ def experiment_config(output_dir=Path("unused")) -> ExperimentConfig:
     )
 
 
-def make_experiment(*, scores=None, safety=None, camera_options=None):
+def make_experiment(
+    *, scores=None, safety=None, camera_options=None, brightness_guard_config=None
+):
     events = []
     temporary = TemporaryDirectory()
     provider = Provider()
@@ -222,6 +231,7 @@ def make_experiment(*, scores=None, safety=None, camera_options=None):
         policy,
         logger,
         Evaluator(events),
+        brightness_guard_config,
     )
     runtime._test_temporary = temporary
     return runtime, events, provider, camera, predictor, policy, logger
@@ -438,6 +448,50 @@ class RiskBanditExperimentTest(unittest.TestCase):
             result.decision.selected_cell,
             policy.safety_policy.safe_cells(provider.current),
         )
+
+    def test_log_mode_records_brightness_without_changing_legacy_decision(self) -> None:
+        scores = [QScore(0.4, 0.2, 0.2), QScore(0.3, 0.1, 0.2)]
+        legacy = make_experiment(
+            scores=list(scores), camera_options={"image_value": 255}
+        )[0]
+        runtime, _, _, _, _, _, logger = make_experiment(
+            scores=list(scores),
+            camera_options={"image_value": 255},
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.LOG
+            ),
+        )
+        self.track(legacy)
+        self.track(runtime)
+        with patch(
+            "ati_mde_control.risk_bandit_experiment.time.time_ns",
+            return_value=1_000_000_000,
+        ):
+            legacy_decisions = [legacy.run_round().decision for _ in range(2)]
+            logged_decisions = [runtime.run_round().decision for _ in range(2)]
+        self.assertEqual(
+            [item.selected_cell for item in logged_decisions],
+            [item.selected_cell for item in legacy_decisions],
+        )
+        self.assertEqual(
+            [item.status for item in logged_decisions],
+            [item.status for item in legacy_decisions],
+        )
+        self.assertEqual(logger.rows[0]["brightness_state"], "severe_over")
+        self.assertEqual(logger.rows[0]["brightness_guard_mode"], "log")
+
+    def test_enforce_mode_applies_severe_over_recovery_before_learned_score(self) -> None:
+        runtime, _, _, camera, _, _, logger = make_experiment(
+            camera_options={"image_value": 255},
+            brightness_guard_config=BrightnessGuardConfig(
+                mode=BrightnessGuardMode.ENFORCE
+            ),
+        )
+        result = self.track(runtime).run_round()
+        self.assertEqual(result.decision.status, "brightness_recovery")
+        self.assertEqual(result.decision.selected_cell, SensorCell(8, 64))
+        self.assertEqual(camera.active_cell, SensorCell(8, 64))
+        self.assertEqual(logger.rows[0]["brightness_force_recovery"], 1)
 
 
 class RiskBanditEntrypointTest(unittest.TestCase):

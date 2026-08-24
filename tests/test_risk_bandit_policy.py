@@ -121,6 +121,47 @@ class RiskBanditPolicyTest(unittest.TestCase):
         self.assertEqual(decision.selected_cell, current)
         self.assertEqual(decision.status, "gp_numerical_fallback")
 
+    def test_brightness_filter_and_recovery_stay_inside_hard_safety(self) -> None:
+        policy = self.make_policy()
+        context = ContextKey(0, 0)
+        current = SensorCell(16, 64)
+        admissible = (current, SensorCell(8, 64))
+        policy.add_observation(context, SensorCell(32, 128), 0, q_score(-10.0))
+        filtered = policy.select_action(
+            context,
+            current,
+            1,
+            admissible_cells=admissible,
+            prefer_brighter=False,
+        )
+        self.assertIn(filtered.selected_cell, admissible)
+        recovered = policy.select_action(
+            context,
+            current,
+            1,
+            admissible_cells=admissible,
+            forced_cell=SensorCell(8, 64),
+        )
+        self.assertEqual(recovered.selected_cell, SensorCell(8, 64))
+        self.assertEqual(recovered.status, "brightness_recovery")
+        with self.assertRaises(ValueError):
+            policy.select_action(
+                context,
+                current,
+                1,
+                admissible_cells=admissible,
+                forced_cell=SensorCell(32, 128),
+            )
+
+    def test_brightness_change_discards_only_matching_context_history(self) -> None:
+        policy = self.make_policy()
+        changed = ContextKey(0, 0)
+        retained = ContextKey(1, 0)
+        policy.add_observation(changed, SensorCell(16, 64), 0, q_score(0.5))
+        policy.add_observation(retained, SensorCell(16, 64), 1, q_score(0.4))
+        policy.reset_for_brightness_change(changed)
+        self.assertEqual(tuple(item.context for item in policy.history), (retained,))
+
 
 if __name__ == "__main__":
     unittest.main()

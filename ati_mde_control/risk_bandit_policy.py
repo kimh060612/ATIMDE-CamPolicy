@@ -3,12 +3,13 @@ from __future__ import annotations
 import math
 from collections import deque
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import numpy as np
 
 from hardware.utils import ALL_CELLS, ContextKey, QScore, SensorCell
 
+from .brightness_safety import ev_step
 from .config import SafetyPolicy
 
 
@@ -168,14 +169,47 @@ class RiskBanditPolicy:
             ),
         )
 
+    def reset_for_brightness_change(self, context: ContextKey) -> None:
+        context.validate()
+        self._history = deque(
+            (item for item in self._history if item.context != context),
+            maxlen=self.config.window_size,
+        )
+
     def select_action(
         self,
         context: ContextKey,
         current_cell: SensorCell,
         timestamp_ns: int,
+        admissible_cells: Sequence[SensorCell] | None = None,
+        prefer_brighter: bool | None = None,
+        forced_cell: SensorCell | None = None,
     ) -> RiskBanditDecision:
-        safe = self.safe_cells(context)
-        fallback = current_cell if current_cell in safe else self.safe_fallback(context)
+        hard_safe = self.safe_cells(context)
+        safe = hard_safe
+        if admissible_cells is not None:
+            allowed = set(admissible_cells)
+            safe = tuple(cell for cell in hard_safe if cell in allowed)
+            if not safe:
+                safe = (self.safe_fallback(context),)
+        if current_cell in safe:
+            fallback = current_cell
+        else:
+            default_e, default_g = self._action_feature(self.default_cell)
+            fallback = min(
+                safe,
+                key=lambda cell: (
+                    (self._action_feature(cell)[0] - default_e) ** 2
+                    + (self._action_feature(cell)[1] - default_g) ** 2,
+                    cell.cell_id,
+                ),
+            )
+        if forced_cell is not None:
+            if forced_cell not in safe:
+                raise ValueError(
+                    "A forced brightness recovery cell must be admissible and hard-safe."
+                )
+            return RiskBanditDecision(forced_cell, (), "brightness_recovery")
         if not self._history:
             return RiskBanditDecision(fallback, (), "no_history")
         try:
@@ -204,6 +238,13 @@ class RiskBanditPolicy:
                 key=lambda item: (
                     item.acquisition,
                     0 if item.cell == current_cell else 1,
+                    (
+                        -ev_step(item.cell)
+                        if prefer_brighter is True
+                        else ev_step(item.cell)
+                        if prefer_brighter is False
+                        else 0
+                    ),
                     item.cell.cell_id,
                 ),
             ).cell

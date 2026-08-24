@@ -14,6 +14,7 @@ IndexPoint = tuple[float, float]
 
 
 class GeometricProposalKind(str, Enum):
+    BRIGHTNESS_RECOVERY = "brightness_recovery"
     INITIAL_EXPOSURE = "initial_exposure"
     INITIAL_GAIN = "initial_gain"
     REFLECTION = "reflection"

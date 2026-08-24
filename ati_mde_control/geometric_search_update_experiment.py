@@ -2,6 +2,14 @@ from __future__ import annotations
 
 from hardware.utils import ContextKey, QScore, SensorCell
 
+from .brightness_safety import (
+    BrightnessDecision,
+    BrightnessGuard,
+    BrightnessGuardConfig,
+    BrightnessGuardMode,
+    BrightnessState,
+    brightness_log_values,
+)
 from .geometric_search_policy import GeometricSearchPolicy
 from .local_search_update_experiment import LocalSearchUpdateExperiment
 from .types import CapturedFrame, RoundResult, SwitchEvent
@@ -11,6 +19,16 @@ class GeometricSearchUpdateExperiment(LocalSearchUpdateExperiment):
     """Current-score-reuse execution path with one geometric challenger."""
 
     policy: GeometricSearchPolicy
+
+    def __init__(
+        self,
+        *args,
+        brightness_guard_config: BrightnessGuardConfig | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.brightness_guard_config = brightness_guard_config or BrightnessGuardConfig()
+        self._brightness_guards: dict[ContextKey, BrightnessGuard] = {}
 
     def _predict(self, frame: CapturedFrame, context: ContextKey) -> QScore:
         # Prefer the control-only score head used by the reference route while
@@ -27,6 +45,8 @@ class GeometricSearchUpdateExperiment(LocalSearchUpdateExperiment):
         )
 
     def run_round(self) -> RoundResult:
+        first_row = len(self.logger.rows)
+        brightness_decision: BrightnessDecision | None = None
         context, initially_stable = self.capture_runner.context_state()
         context.validate()
         self.policy.on_context(context)
@@ -87,12 +107,59 @@ class GeometricSearchUpdateExperiment(LocalSearchUpdateExperiment):
                 allow_decision=False,
             )
         else:
-            challenger = self.policy.proposal_after_current(
-                context,
-                current,
-                current_score,
-                allow_probe=not forced,
+            mode = self.brightness_guard_config.mode
+            if mode is not BrightnessGuardMode.OFF:
+                first_brightness_observation = context not in self._brightness_guards
+                guard = self._brightness_guards.setdefault(
+                    context,
+                    BrightnessGuard(self.brightness_guard_config),
+                )
+                brightness_decision = guard.observe(
+                    current_frame.image,
+                    current,
+                    self.policy.safety.safe_cells(context),
+                )
+                if (
+                    (first_brightness_observation or brightness_decision.state_changed)
+                    and mode in (BrightnessGuardMode.FILTER, BrightnessGuardMode.ENFORCE)
+                ):
+                    self.policy.reset_for_brightness_change(context)
+
+            recovery_unavailable = (
+                mode is BrightnessGuardMode.ENFORCE
+                and brightness_decision is not None
+                and brightness_decision.state is BrightnessState.SEVERE_OVER
+                and brightness_decision.recovery_cell is None
             )
+            if recovery_unavailable:
+                self.policy.reset_for_brightness_change(
+                    context, "brightness_recovery_unavailable"
+                )
+                challenger = None
+            elif (
+                brightness_decision is not None
+                and mode in (BrightnessGuardMode.FILTER, BrightnessGuardMode.ENFORCE)
+            ):
+                challenger = self.policy.proposal_after_current(
+                    context,
+                    current,
+                    current_score,
+                    allow_probe=not forced,
+                    admissible_cells=brightness_decision.admissible_cells,
+                    prefer_brighter=brightness_decision.prefer_brighter,
+                    forced_challenger=(
+                        brightness_decision.recovery_cell
+                        if brightness_decision.force_recovery
+                        else None
+                    ),
+                )
+            else:
+                challenger = self.policy.proposal_after_current(
+                    context,
+                    current,
+                    current_score,
+                    allow_probe=not forced,
+                )
             if challenger is not None:
                 result = self._finish_probe(
                     context,
@@ -123,5 +190,10 @@ class GeometricSearchUpdateExperiment(LocalSearchUpdateExperiment):
                     decision_stable,
                 )
 
+        brightness_values = brightness_log_values(
+            self.brightness_guard_config, brightness_decision
+        )
+        for row in self.logger.rows[first_row:]:
+            row.update(brightness_values)
         self.round_index += 1
         return result

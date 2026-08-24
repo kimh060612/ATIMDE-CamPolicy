@@ -64,9 +64,10 @@ def build_experiment(args: argparse.Namespace) -> GeometricSearchUpdateExperimen
         config.q_uncertainty_weight,
         config.local_files_only,
     )
+    safety = SafetyPolicy.from_json(config.safety_path)
     policy = GeometricSearchPolicy(
         config.policy,
-        SafetyPolicy.from_json(config.safety_path),
+        safety,
         simplex_memory_ttl_rounds=args.simplex_memory_ttl_rounds,
     )
     capture_runner = CaptureRunner(
@@ -75,7 +76,13 @@ def build_experiment(args: argparse.Namespace) -> GeometricSearchUpdateExperimen
     logger = CaptureLogger(config.output_dir)
     evaluator = DepthEvaluator(predictor, config)
     return GeometricSearchUpdateExperiment(
-        config, capture_runner, predictor, policy, logger, evaluator
+        config,
+        capture_runner,
+        predictor,
+        policy,
+        logger,
+        evaluator,
+        brightness_guard_config=safety.brightness_guard,
     )
 
 

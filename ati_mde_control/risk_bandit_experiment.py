@@ -7,6 +7,14 @@ from typing import Any, Protocol
 
 from hardware.utils import ContextKey, QScore, SensorCell
 
+from .brightness_safety import (
+    BrightnessDecision,
+    BrightnessGuard,
+    BrightnessGuardConfig,
+    BrightnessGuardMode,
+    BrightnessState,
+    brightness_log_values,
+)
 from .capture_runner import CaptureRunner
 from .config import ExperimentConfig
 from .full_depth_predictor import (
@@ -57,6 +65,7 @@ class RiskBanditExperiment:
         policy: RiskBanditPolicy,
         logger: CaptureLogger,
         evaluator: Any,
+        brightness_guard_config: BrightnessGuardConfig | None = None,
     ) -> None:
         self.config = config
         self.capture_runner = capture_runner
@@ -67,9 +76,14 @@ class RiskBanditExperiment:
         self.round_index = 0
         self.current_cell: SensorCell | None = None
         self._pre_applied: PreAppliedMetadata | None = None
+        self.brightness_guard_config = (
+            brightness_guard_config or BrightnessGuardConfig()
+        )
+        self._brightness_guards: dict[ContextKey, BrightnessGuard] = {}
 
     def run_round(self) -> RiskBanditRoundResult:
-        latched_context, _ = self.capture_runner.context_state()
+        brightness_decision: BrightnessDecision | None = None
+        latched_context, initially_stable = self.capture_runner.context_state()
         latched_context.validate()
         self._ensure_safe_pre_applied(latched_context)
         if self.current_cell is None or self._pre_applied is None:
@@ -86,13 +100,68 @@ class RiskBanditExperiment:
 
         # Delayed feedback is preserved: round t+1 is selected using history
         # only through t-1, before the current frame's synchronous inference.
-        selection_context, _ = self.capture_runner.context_state()
+        selection_context, selection_stable = self.capture_runner.context_state()
         selection_context.validate()
-        decision = self.policy.select_action(
-            selection_context,
-            self.current_cell,
-            time.time_ns(),
+        selection_time_ns = time.time_ns()
+        mode = self.brightness_guard_config.mode
+        hard_safe = self.policy.safe_cells(selection_context)
+        guard_valid = (
+            initially_stable
+            and frame.context_stable
+            and selection_stable
+            and frame.capture_context == latched_context == selection_context
+            and frame.setting_effective
+            and self.current_cell in hard_safe
         )
+        if mode is not BrightnessGuardMode.OFF and guard_valid:
+            first_observation = selection_context not in self._brightness_guards
+            guard = self._brightness_guards.setdefault(
+                selection_context,
+                BrightnessGuard(self.brightness_guard_config),
+            )
+            brightness_decision = guard.observe(
+                frame.image,
+                self.current_cell,
+                hard_safe,
+            )
+            if (
+                (first_observation or brightness_decision.state_changed)
+                and mode in (BrightnessGuardMode.FILTER, BrightnessGuardMode.ENFORCE)
+            ):
+                self.policy.reset_for_brightness_change(selection_context)
+        if (
+            mode is BrightnessGuardMode.ENFORCE
+            and brightness_decision is not None
+            and brightness_decision.state is BrightnessState.SEVERE_OVER
+            and brightness_decision.recovery_cell is None
+        ):
+            decision = RiskBanditDecision(
+                self.current_cell,
+                (),
+                "brightness_recovery_unavailable",
+            )
+        elif (
+            brightness_decision is not None
+            and mode in (BrightnessGuardMode.FILTER, BrightnessGuardMode.ENFORCE)
+        ):
+            decision = self.policy.select_action(
+                selection_context,
+                self.current_cell,
+                selection_time_ns,
+                admissible_cells=brightness_decision.admissible_cells,
+                prefer_brighter=brightness_decision.prefer_brighter,
+                forced_cell=(
+                    brightness_decision.recovery_cell
+                    if brightness_decision.force_recovery
+                    else None
+                ),
+            )
+        else:
+            decision = self.policy.select_action(
+                selection_context,
+                self.current_cell,
+                selection_time_ns,
+            )
 
         score: QScore | None = None
         prediction_error: Exception | None = None
@@ -161,6 +230,12 @@ class RiskBanditExperiment:
             "selected": 1,
             "control_decision_delay_ms": decision_delay_ms,
         }
+        values.update(
+            brightness_log_values(
+                self.brightness_guard_config,
+                brightness_decision,
+            )
+        )
         self.logger.record(frame, score, values)
         self._warn(frame, score, decision_delay_ms)
         print(

@@ -159,6 +159,7 @@ def build_experiment(args: argparse.Namespace) -> RiskBanditExperiment:
         policy,
         logger,
         evaluator,
+        safety_policy.brightness_guard,
     )
 
 
