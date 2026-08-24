@@ -152,11 +152,11 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
     )
     context_provider = _FixedContext()
     predictor = DepthAnythingV2Small(args) if args.mode == 2 else None
-    executor = (
-        ThreadPoolExecutor(max_workers=1, thread_name_prefix="depth-anything")
-        if args.mode == 2
-        else None
-    )
+    # executor = (
+    #     ThreadPoolExecutor(max_workers=1, thread_name_prefix="depth-anything")
+    #     if args.mode == 2
+    #     else None
+    # )
     jobs: list[tuple[Future[float], dict[str, Any]]] = []
     rows: list[dict[str, Any]] = []
     run_error: BaseException | None = None
@@ -194,13 +194,9 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
                 output_dir, frame, setting, operation, iqa, iqa_ms, controller, args.mode
             )
             rows.append(row)
-            if executor is not None and predictor is not None:
-                future = executor.submit(
-                    predictor.infer,
-                    Path(row["image_path"]),
-                    Path(row["raw_pred_depth_path"]),
-                )
-                jobs.append((future, row))
+            if predictor is not None:
+                inference_time = predictor.infer(row["image_path"], row["raw_pred_depth_path"])
+                jobs.append(inference_time)
             best = controller.best_setting
             print(
                 f"[Capture] {frame_index + 1:03d}/{args.num_frames} "
@@ -218,14 +214,13 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
         if camera is not None:
             camera.close()
 
-    if executor is not None:
-        executor.shutdown(wait=True)
-        for future, row in jobs:
+    if predictor is not None:
+        for inference_time in jobs:
             try:
-                row["mde_inference_ms"] = future.result()
+                row["mde_inference_ms"] = inference_time
             except (OSError, RuntimeError, ValueError) as error:
                 row["mde_error"] = str(error)
-    elif rows:
+    else:
         try:
             predictor = DepthAnythingV2Small(args)
             for index, row in enumerate(rows, 1):

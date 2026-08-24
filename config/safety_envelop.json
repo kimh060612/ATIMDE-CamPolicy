@@ -1,7 +1,7 @@
 {
   "max_exposure_ms_by_motion": [
     16,
-    32,
+    16,
     32,
     16,
     8

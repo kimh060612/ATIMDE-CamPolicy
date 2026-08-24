@@ -27,7 +27,7 @@ from typing import Iterable, Mapping
 
 
 ABS_REL_OUTLIER_MIN = 0.4
-A1_OUTLIER_MIN = 0.60
+A1_OUTLIER_MIN = 0.40
 TRUE_VALUES = {"1", "1.0", "true", "yes"}
 
 
