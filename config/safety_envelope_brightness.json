@@ -6,21 +6,26 @@
     "mode": "log",
     "ema_alpha": 0.3,
     "state_change_frames": 2,
+
     "tile_grid_size": 8,
-    "tile_clip_pixel_ratio": 0.05,
-    "over_tile_ratio": 0.25,
-    "severe_over_tile_ratio": 0.5,
-    "over_luma_clip_ratio": 0.01,
-    "severe_over_luma_clip_ratio": 0.05,
-    "over_channel_clip_ratio": 0.03,
-    "over_p99": 248,
+    "tile_clip_pixel_ratio": 0.10,
+    "over_tile_ratio": 0.50,
+    "severe_over_tile_ratio": 0.75,
+
+    "over_luma_clip_ratio": 0.15,
+    "severe_over_luma_clip_ratio": 0.30,
+    "over_channel_clip_ratio": 0.20,
+    "over_p99": 255,
+
     "under_p50": 50,
     "severe_under_p50": 25,
-    "under_shadow_ratio": 0.2,
-    "severe_under_shadow_ratio": 0.4,
+    "under_shadow_ratio": 0.20,
+    "severe_under_shadow_ratio": 0.40,
+
     "target_p50": 110,
     "clipping_value": 250,
     "shadow_value": 8,
+
     "good_ev_radius": 1,
     "under_max_ev_increase": 1,
     "severe_under_max_ev_increase": 2
