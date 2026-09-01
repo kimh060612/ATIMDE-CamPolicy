@@ -114,8 +114,8 @@ class CameraErrorPredictor:
         size = len(images)
         if not size or not (len(contexts) == len(exposure_us_values) == len(gains) == size):
             raise ValueError("Inference inputs require the same non-zero length.")
-        rgb = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images]
-        pixels = self.processor(images=rgb, return_tensors="pt")["pixel_values"].to(
+        # rgb = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images]
+        pixels = self.processor(images=images, return_tensors="pt")["pixel_values"].to(
             device=self.device, dtype=self.dtype, non_blocking=True
         )
         vectors = torch.cat([
