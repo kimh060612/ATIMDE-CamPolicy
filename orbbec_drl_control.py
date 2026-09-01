@@ -276,6 +276,7 @@ def run(args: argparse.Namespace) -> tuple[Path, int, int]:
     camera: OrbbecColorCamera | None = None
 
     try:
+        predictor = DepthAnythingV2Small(args)
         camera = OrbbecColorCamera(
             exposure_value_per_ms=args.exposure_value_per_ms,
             settle_frames=args.settle_frames,
@@ -326,23 +327,29 @@ def run(args: argparse.Namespace) -> tuple[Path, int, int]:
             )
             controller.observe(image)
             inference_cycle_ms = (time.perf_counter() - started) * 1000.0
-            rows.append(
-                save_capture(
-                    output_dir,
-                    frame_index,
-                    image,
-                    depth_m,
-                    camera,
-                    actor_action,
-                    ev,
-                    exposure_ms,
-                    args.gain,
-                    requested_raw,
-                    actual_raw,
-                    actual_gain,
-                    inference_cycle_ms,
-                )
+            row = save_capture(
+                output_dir,
+                frame_index,
+                image,
+                depth_m,
+                camera,
+                actor_action,
+                ev,
+                exposure_ms,
+                args.gain,
+                requested_raw,
+                actual_raw,
+                actual_gain,
+                inference_cycle_ms,
             )
+            rows.append(row)
+            try:
+                row["mde_inference_ms"] = predictor.infer(
+                    Path(row["image_path"]), Path(row["raw_pred_depth_path"])
+                )
+                print(f"[MDE] {frame_index + 1:03d}")
+            except (OSError, RuntimeError, ValueError) as error:
+                row["mde_error"] = str(error)
             line = (
                 f"[Frame {frame_index:06d}] actor={actor_action:+.6f} EV={ev:+.6f} "
                 f"exposure_ms={exposure_ms:.6f} requested_raw={requested_raw} "
@@ -357,21 +364,6 @@ def run(args: argparse.Namespace) -> tuple[Path, int, int]:
     finally:
         if camera is not None:
             camera.close()
-
-    if rows:
-        try:
-            predictor = DepthAnythingV2Small(args)
-            for index, row in enumerate(rows, 1):
-                try:
-                    row["mde_inference_ms"] = predictor.infer(
-                        Path(row["image_path"]), Path(row["raw_pred_depth_path"])
-                    )
-                    print(f"[MDE] {index:03d}/{len(rows)}")
-                except (OSError, RuntimeError, ValueError) as error:
-                    row["mde_error"] = str(error)
-        except (OSError, RuntimeError, ValueError) as error:
-            for row in rows:
-                row["mde_error"] = str(error)
 
     for index, row in enumerate(rows, 1):
         if row["mde_error"]:
