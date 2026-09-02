@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the pretrained DRL exposure policy on an Orbbec color camera."""
+"""Run DRL composite-exposure control on an Orbbec RGB-D camera."""
 
 from __future__ import annotations
 
@@ -16,8 +16,13 @@ import cv2
 import numpy as np
 import torch
 
-from drl_policy.controller import DRLExposureController, exposure_for_ev
+from drl_policy.controller import DRLExposureController
 from drl_policy.log import Log
+from drl_policy.progressive_allocator import (
+    DEFAULT_MILESTONES,
+    ExposureAllocation,
+    allocate_progressive_exposure,
+)
 from hardware.sensor import OrbbecColorCamera
 from hardware.utils import SensorCell
 from orbbec_iqa_control import DepthAnythingV2Small, _evaluate_saved_prediction
@@ -32,8 +37,14 @@ CSV_FIELDS = (
     "timestamp_ns",
     "actor_action",
     "ev",
+    "requested_exposure",
+    "realized_exposure",
+    "exposure_time_us",
     "exposure_ms",
+    "gain_db",
     "gain",
+    "was_clipped",
+    "allocation_stage",
     "requested_exposure_raw",
     "actual_exposure_raw",
     "actual_gain",
@@ -64,17 +75,43 @@ CSV_FIELDS = (
 )
 
 
+def parse_milestone(value: str) -> tuple[float, float]:
+    try:
+        exposure_time_us, gain_db = map(float, value.split(":"))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("Milestone must be TIME_US:GAIN_DB.") from error
+    if not math.isfinite(exposure_time_us) or not math.isfinite(gain_db) or exposure_time_us <= 0:
+        raise argparse.ArgumentTypeError("Milestone time must be positive and finite.")
+    return exposure_time_us, gain_db
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="DRL exposure-only control for an Orbbec color camera."
+        description="DRL progressive exposure-time/gain control for an Orbbec camera."
     )
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or cuda:N")
-    parser.add_argument("--initial-exposure-ms", type=float, default=10.0)
-    parser.add_argument("--min-exposure-ms", type=float, default=0.05)
-    parser.add_argument("--max-exposure-ms", type=float, default=2000.0)
+    parser.add_argument("--initial-target-exposure-us", type=float, default=10_000.0)
+    parser.add_argument("--t-min-us", type=float, default=50.0)
+    parser.add_argument("--t-max-us", type=float, default=2_000_000.0)
     parser.add_argument(
-        "--gain", type=int, default=16, help="Fixed gain; the policy never changes it."
+        "--gain-min-db", type=float, default=0.0
+    )
+    parser.add_argument("--gain-max-db", type=float, default=20.0)
+    parser.add_argument("--gain-step-db", type=float, default=1.0 / 16.0)
+    parser.add_argument(
+        "--gain-raw-per-db",
+        type=float,
+        default=16.0,
+        help="Orbbec raw gain units per dB; Gemini 335/336 use 16.",
+    )
+    parser.add_argument(
+        "--milestone",
+        dest="milestones",
+        action="append",
+        type=parse_milestone,
+        metavar="TIME_US:GAIN_DB",
+        help="Repeat to replace the default progressive-allocation milestones.",
     )
     parser.add_argument("--exposure-value-per-ms", type=float, default=10.0)
     parser.add_argument("--settle-frames", type=int, default=4)
@@ -109,25 +146,32 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     finite_positive = (
-        args.initial_exposure_ms,
-        args.min_exposure_ms,
-        args.max_exposure_ms,
+        args.initial_target_exposure_us,
+        args.t_min_us,
+        args.t_max_us,
         args.exposure_value_per_ms,
+        args.gain_step_db,
+        args.gain_raw_per_db,
     )
     if not all(math.isfinite(value) and value > 0 for value in finite_positive):
         parser.error(
             "Exposure values and --exposure-value-per-ms must be finite and positive."
         )
-    if not args.min_exposure_ms <= args.initial_exposure_ms <= args.max_exposure_ms:
-        parser.error("Require min exposure <= initial exposure <= max exposure.")
-    if args.gain < 0 or args.settle_frames < 0 or args.warmup_frames < 0:
-        parser.error("Gain and frame counts must be non-negative.")
+    if args.t_max_us < args.t_min_us:
+        parser.error("Require --t-min-us <= --t-max-us.")
+    if not all(math.isfinite(value) for value in (args.gain_min_db, args.gain_max_db)):
+        parser.error("Gain bounds must be finite.")
+    if args.gain_max_db < args.gain_min_db:
+        parser.error("Require --gain-min-db <= --gain-max-db.")
+    if args.settle_frames < 0 or args.warmup_frames < 0:
+        parser.error("Frame counts must be non-negative.")
     if args.frame_timeout_ms < 1 or args.max_frames < 0:
         parser.error("Frame timeout must be positive and max frames non-negative.")
     if not 0 < args.min_depth_m < args.max_depth_m:
         parser.error("Require 0 < --min-depth-m < --max-depth-m.")
     if args.min_valid_depth_pixels < 1:
         parser.error("--min-valid-depth-pixels must be positive.")
+    args.milestones = tuple(args.milestones or DEFAULT_MILESTONES)
     return args
 
 
@@ -145,9 +189,9 @@ def exposure_raw_limits(
     sensor_range = camera.exposure_range or {}
     origin = sensor_range.get("min", 0)
     step = max(1, sensor_range.get("step", 1))
-    lower = max(math.ceil(args.min_exposure_ms * scale), sensor_range.get("min", 1))
+    lower = max(math.ceil(args.t_min_us / 1000.0 * scale), sensor_range.get("min", 1))
     upper = min(
-        math.floor(args.max_exposure_ms * scale),
+        math.floor(args.t_max_us / 1000.0 * scale),
         sensor_range.get("max", math.inf),
     )
     lower = origin + math.ceil((lower - origin) / step) * step
@@ -157,12 +201,31 @@ def exposure_raw_limits(
     return int(lower), int(upper), step
 
 
-def quantize_exposure_ms(
-    exposure_ms: float, scale: float, limits: tuple[int, int, int]
-) -> float:
-    lower, upper, step = limits
-    raw = lower + round((exposure_ms * scale - lower) / step) * step
-    return min(max(raw, lower), upper) / scale
+def gain_db_limits(
+    args: argparse.Namespace, camera: OrbbecColorCamera
+) -> tuple[float, float, float]:
+    sensor_range = camera.gain_range or {}
+    sensor_origin = sensor_range.get("min", 0)
+    sensor_step = max(1, sensor_range.get("step", 1))
+    lower = max(
+        math.ceil(args.gain_min_db * args.gain_raw_per_db),
+        sensor_range.get("min", 0),
+    )
+    upper = min(
+        math.floor(args.gain_max_db * args.gain_raw_per_db),
+        sensor_range.get("max", math.inf),
+    )
+    lower = sensor_origin + math.ceil((lower - sensor_origin) / sensor_step) * sensor_step
+    configured_step = max(
+        sensor_step,
+        math.ceil(args.gain_step_db * args.gain_raw_per_db / sensor_step)
+        * sensor_step,
+    )
+    upper = lower + math.floor((upper - lower) / configured_step) * configured_step
+    if lower > upper:
+        raise ValueError("Configured gain limits do not overlap the camera gain range.")
+    scale = args.gain_raw_per_db
+    return lower / scale, upper / scale, configured_step / scale
 
 
 def empty_row() -> dict[str, Any]:
@@ -177,8 +240,8 @@ def save_capture(
     camera: OrbbecColorCamera,
     actor_action: float,
     ev: float,
-    exposure_ms: float,
-    gain: int,
+    allocation: ExposureAllocation,
+    gain_raw: int,
     requested_raw: int,
     actual_raw: int | None,
     actual_gain: int | None,
@@ -201,8 +264,14 @@ def save_capture(
         timestamp_ns=timestamp_ns,
         actor_action=actor_action,
         ev=ev,
-        exposure_ms=exposure_ms,
-        gain=gain,
+        requested_exposure=allocation.requested_exposure,
+        realized_exposure=allocation.realized_exposure,
+        exposure_time_us=allocation.exposure_time_us,
+        exposure_ms=allocation.exposure_time_us / 1000.0,
+        gain_db=allocation.gain_db,
+        gain=gain_raw,
+        was_clipped=int(allocation.was_clipped),
+        allocation_stage=allocation.stage,
         requested_exposure_raw=requested_raw,
         actual_exposure_raw=actual_raw,
         actual_gain=actual_gain,
@@ -233,7 +302,12 @@ def write_report(output_dir: Path, rows: list[dict[str, Any]]) -> Path:
     )
     for field in (
         "ev",
+        "requested_exposure",
+        "realized_exposure",
+        "exposure_time_us",
         "exposure_ms",
+        "gain_db",
+        "was_clipped",
         "control_cycle_ms",
         "mde_inference_ms",
         "abs_rel",
@@ -286,23 +360,43 @@ def run(args: argparse.Namespace) -> tuple[Path, int, int]:
             strict_property_grid=False,
         )
         limits = exposure_raw_limits(args, camera)
-        minimum_ms = limits[0] / args.exposure_value_per_ms
-        maximum_ms = limits[1] / args.exposure_value_per_ms
-        exposure_ms = quantize_exposure_ms(
-            args.initial_exposure_ms, args.exposure_value_per_ms, limits
-        )
+        t_min_us = limits[0] / args.exposure_value_per_ms * 1000.0
+        t_max_us = limits[1] / args.exposure_value_per_ms * 1000.0
+        t_step_us = limits[2] / args.exposure_value_per_ms * 1000.0
+        gain_min_db, gain_max_db, gain_step_db = gain_db_limits(args, camera)
+        def allocate(target_exposure: float) -> ExposureAllocation:
+            return allocate_progressive_exposure(
+                target_exposure,
+                t_min_us=t_min_us,
+                t_max_us=t_max_us,
+                gain_min_db=gain_min_db,
+                gain_max_db=gain_max_db,
+                gain_step_db=gain_step_db,
+                milestones=args.milestones,
+                t_step_us=t_step_us,
+            )
 
-        _, actual_raw, _ = camera.apply_cell(SensorCell(exposure_ms, args.gain))
+        allocation = allocate(args.initial_target_exposure_us)
+        gain_raw = round(allocation.gain_db * args.gain_raw_per_db)
+        _, actual_raw, actual_gain = camera.apply_cell(
+            SensorCell(allocation.exposure_time_us / 1000.0, gain_raw)
+        )
         image, _ = camera.capture_rgbd()
         if not camera.setting_effective:
             raise RuntimeError("The initial camera exposure could not be verified.")
-        if actual_raw is not None:
-            exposure_ms = actual_raw / args.exposure_value_per_ms
+        current_exposure = allocation.realized_exposure
+        if actual_raw is not None and actual_gain is not None:
+            current_exposure = (
+                actual_raw / args.exposure_value_per_ms * 1000.0
+                * 10.0 ** ((actual_gain / args.gain_raw_per_db) / 20.0)
+            )
         controller.observe(image)
 
         logger.add_log(
             f"[Start] checkpoint={args.checkpoint.resolve()} device={device} "
-            f"exposure_ms={exposure_ms:.6f} gain={args.gain}"
+            f"target={allocation.requested_exposure:.3f}us "
+            f"t={allocation.exposure_time_us:.3f}us "
+            f"gain={allocation.gain_db:.3f}dB/raw{gain_raw}"
         )
         logger.save_buffer_to_file()
         frame_index = 0
@@ -310,21 +404,23 @@ def run(args: argparse.Namespace) -> tuple[Path, int, int]:
         while args.max_frames == 0 or frame_index < args.max_frames:
             started = time.perf_counter()
             ev, actor_action = controller.action()
-            target_ms = exposure_for_ev(exposure_ms, ev, minimum_ms, maximum_ms)
-            target_ms = quantize_exposure_ms(target_ms, args.exposure_value_per_ms, limits)
+            target_exposure = current_exposure * 2.0 ** (-ev)
+            allocation = allocate(target_exposure)
+            gain_raw = round(allocation.gain_db * args.gain_raw_per_db)
             requested_raw, actual_raw, actual_gain = camera.apply_cell(
-                SensorCell(target_ms, args.gain)
+                SensorCell(allocation.exposure_time_us / 1000.0, gain_raw)
             )
             image, depth_m = camera.capture_rgbd()
             if not camera.setting_effective:
                 raise RuntimeError(
                     f"Camera setting was not verified at frame {frame_index}."
                 )
-            exposure_ms = (
-                actual_raw / args.exposure_value_per_ms
-                if actual_raw is not None
-                else requested_raw / args.exposure_value_per_ms
-            )
+            current_exposure = allocation.realized_exposure
+            if actual_raw is not None and actual_gain is not None:
+                current_exposure = (
+                    actual_raw / args.exposure_value_per_ms * 1000.0
+                    * 10.0 ** ((actual_gain / args.gain_raw_per_db) / 20.0)
+                )
             controller.observe(image)
             inference_cycle_ms = (time.perf_counter() - started) * 1000.0
             row = save_capture(
@@ -335,8 +431,8 @@ def run(args: argparse.Namespace) -> tuple[Path, int, int]:
                 camera,
                 actor_action,
                 ev,
-                exposure_ms,
-                args.gain,
+                allocation,
+                gain_raw,
                 requested_raw,
                 actual_raw,
                 actual_gain,
@@ -352,8 +448,12 @@ def run(args: argparse.Namespace) -> tuple[Path, int, int]:
                 row["mde_error"] = str(error)
             line = (
                 f"[Frame {frame_index:06d}] actor={actor_action:+.6f} EV={ev:+.6f} "
-                f"exposure_ms={exposure_ms:.6f} requested_raw={requested_raw} "
-                f"actual_raw={actual_raw} gain={actual_gain} cycle_ms={inference_cycle_ms:.3f}"
+                f"target={allocation.requested_exposure:.3f}us "
+                f"t={allocation.exposure_time_us:.3f}us "
+                f"gain={allocation.gain_db:.3f}dB/raw{gain_raw} "
+                f"realized={allocation.realized_exposure:.3f}us "
+                f"clipped={allocation.was_clipped} stage={allocation.stage} "
+                f"cycle_ms={inference_cycle_ms:.3f}"
             )
             print(line)
             logger.add_log(line)

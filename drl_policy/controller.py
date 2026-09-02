@@ -21,7 +21,7 @@ def exposure_for_ev(
     minimum_ms: float,
     maximum_ms: float,
 ) -> float:
-    """Apply fixed-aperture EV: -1 EV doubles exposure time."""
+    """Apply EV to an exposure quantity: -1 EV doubles it."""
     if not all(map(math.isfinite, (exposure_ms, ev, minimum_ms, maximum_ms))):
         raise ValueError("Exposure and EV values must be finite.")
     if exposure_ms <= 0 or minimum_ms <= 0 or maximum_ms < minimum_ms:
