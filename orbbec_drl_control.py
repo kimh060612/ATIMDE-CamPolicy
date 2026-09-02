@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or cuda:N")
-    parser.add_argument("--initial-target-exposure-us", type=float, default=10_000.0)
+    parser.add_argument("--initial-target-exposure-us", type=float, default=16_000.0)
     parser.add_argument("--t-min-us", type=float, default=50.0)
     parser.add_argument("--t-max-us", type=float, default=2_000_000.0)
     parser.add_argument(
@@ -114,7 +114,7 @@ def parse_args() -> argparse.Namespace:
         help="Repeat to replace the default progressive-allocation milestones.",
     )
     parser.add_argument("--exposure-value-per-ms", type=float, default=10.0)
-    parser.add_argument("--settle-frames", type=int, default=4)
+    parser.add_argument("--settle-frames", type=int, default=3)
     parser.add_argument("--warmup-frames", type=int, default=30)
     parser.add_argument("--frame-timeout-ms", type=int, default=1000)
     parser.add_argument("--disable-awb", action="store_true")

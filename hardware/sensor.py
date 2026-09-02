@@ -228,7 +228,7 @@ class OrbbecColorCamera:
             print(f"[WARNING] Could not enable frame sync: {exc}", file=sys.stderr)
 
         self.pipeline.start(config)
-        print("[Camera] color=640x480@30 depth=640x480@30")
+        print(f"[Camera] color={RGBD_WIDTH}x{RGBD_HEIGHT}@{RGBD_FPS} depth={RGBD_WIDTH}x{RGBD_HEIGHT}@{RGBD_FPS}")
         self.device = self.pipeline.get_device()
 
         self._warmup(warmup_frames)
