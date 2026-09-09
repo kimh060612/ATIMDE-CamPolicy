@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture with Orbbec color auto-exposure and evaluate synchronized MDE."""
+"""Evaluate synchronized RGB-D capture with untouched Orbbec camera defaults."""
 
 from __future__ import annotations
 
@@ -15,8 +15,23 @@ from typing import Any
 import cv2
 import numpy as np
 
-import hardware.sensor as sensor
 from orbbec_iqa_control import DepthAnythingV2Small, _evaluate_saved_prediction
+
+try:
+    from pyorbbecsdk import (  # type: ignore
+        AlignFilter,
+        Config,
+        OBError,
+        OBFormat,
+        OBFrameAggregateOutputMode,
+        OBPropertyID,
+        OBSensorType,
+        OBStreamType,
+        Pipeline,
+    )
+except ImportError:  # pragma: no cover - requires the camera machine
+    AlignFilter = Config = Pipeline = None  # type: ignore
+    OBError = RuntimeError  # type: ignore
 
 
 METRIC_FIELDS = (
@@ -56,24 +71,141 @@ CSV_FIELDS = (
 )
 
 
+def _frame_value(frame: Any, method_name: str) -> int | None:
+    try:
+        return int(getattr(frame, method_name)())
+    except (AttributeError, OBError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _timestamp_us(frame: Any) -> int | None:
+    value = _frame_value(frame, "get_timestamp_us")
+    if value is not None:
+        return value
+    value = _frame_value(frame, "get_timestamp")
+    return value * 1000 if value is not None else None
+
+
+def _frame_to_bgr(frame: Any) -> np.ndarray:
+    width, height = int(frame.get_width()), int(frame.get_height())
+    frame_format = frame.get_format()
+    data = np.asanyarray(frame.get_data()).reshape(-1)
+    if frame_format == OBFormat.RGB:
+        return cv2.cvtColor(data.reshape(height, width, 3), cv2.COLOR_RGB2BGR)
+    if frame_format == OBFormat.BGR:
+        return data.reshape(height, width, 3).copy()
+    if frame_format == OBFormat.YUYV:
+        return cv2.cvtColor(
+            data.reshape(height, width, 2), cv2.COLOR_YUV2BGR_YUY2
+        )
+    if frame_format == OBFormat.MJPG:
+        image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        if image is not None:
+            return image
+    raise RuntimeError(f"Unsupported Orbbec color format: {frame_format}")
+
+
+class DefaultOrbbecCamera:
+    """RGB-D capture that never writes a camera property."""
+
+    def __init__(
+        self, *, frame_timeout_ms: int, warmup_frames: int, exposure_value_per_ms: float
+    ) -> None:
+        if Pipeline is None:
+            raise RuntimeError("pyorbbecsdk is not installed.")
+        self.frame_timeout_ms = frame_timeout_ms
+        self.exposure_value_per_ms = exposure_value_per_ms
+        self.pipeline = Pipeline()
+        self.align_filter = AlignFilter(align_to_stream=OBStreamType.COLOR_STREAM)
+
+        config = Config()
+        color_profile = self.pipeline.get_stream_profile_list(
+            OBSensorType.COLOR_SENSOR
+        ).get_default_video_stream_profile()
+        depth_profile = self.pipeline.get_stream_profile_list(
+            OBSensorType.DEPTH_SENSOR
+        ).get_default_video_stream_profile()
+        config.enable_stream(color_profile)
+        config.enable_stream(depth_profile)
+        config.set_frame_aggregate_output_mode(
+            OBFrameAggregateOutputMode.FULL_FRAME_REQUIRE
+        )
+        try:
+            self.pipeline.enable_frame_sync()
+        except (AttributeError, OBError, RuntimeError) as error:
+            print(f"[WARNING] Could not enable frame sync: {error}", file=sys.stderr)
+        self.pipeline.start(config)
+        self.device = self.pipeline.get_device()
+        for _ in range(warmup_frames):
+            self.pipeline.wait_for_frames(frame_timeout_ms)
+
+    def close(self) -> None:
+        self.pipeline.stop()
+
+    def read_settings(self) -> tuple[bool | None, int | None, int | None]:
+        try:
+            auto_exposure = bool(
+                self.device.get_bool_property(
+                    OBPropertyID.OB_PROP_COLOR_AUTO_EXPOSURE_BOOL
+                )
+            )
+        except (AttributeError, OBError, RuntimeError, TypeError, ValueError):
+            auto_exposure = None
+
+        def read(property_id: Any) -> int | None:
+            try:
+                return int(self.device.get_int_property(property_id))
+            except (AttributeError, OBError, RuntimeError, TypeError, ValueError):
+                return None
+
+        return (
+            auto_exposure,
+            read(OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT),
+            read(OBPropertyID.OB_PROP_COLOR_GAIN_INT),
+        )
+
+    def capture_rgbd(self) -> tuple[np.ndarray, np.ndarray]:
+        deadline = time.monotonic() + max(1.0, self.frame_timeout_ms / 1000.0 * 3)
+        while time.monotonic() < deadline:
+            frames = self.pipeline.wait_for_frames(self.frame_timeout_ms)
+            aligned = self.align_filter.process(frames) if frames is not None else None
+            if aligned is None:
+                continue
+            color_frame = aligned.get_color_frame()
+            depth_frame = aligned.get_depth_frame()
+            if color_frame is None or depth_frame is None:
+                continue
+            image = _frame_to_bgr(color_frame)
+            depth = np.frombuffer(depth_frame.get_data(), dtype=np.uint16).reshape(
+                int(depth_frame.get_height()), int(depth_frame.get_width())
+            )
+            depth_m = (
+                depth.astype(np.float32) * float(depth_frame.get_depth_scale()) / 1000.0
+            )
+            if depth_m.shape != image.shape[:2]:
+                depth_m = cv2.resize(
+                    depth_m,
+                    (image.shape[1], image.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+            self.color_frame_number = _frame_value(color_frame, "get_frame_number")
+            self.depth_frame_number = _frame_value(depth_frame, "get_frame_number")
+            self.color_timestamp_us = _timestamp_us(color_frame)
+            self.depth_timestamp_us = _timestamp_us(depth_frame)
+            return image, np.ascontiguousarray(depth_m, dtype=np.float32)
+        raise TimeoutError("Timed out waiting for an aligned RGB-D frame.")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Orbbec built-in auto-exposure capture and MDE evaluation."
+        description="Orbbec default-camera capture and MDE evaluation."
     )
     parser.add_argument("--num-frames", type=int, default=200)
     parser.add_argument("--output-dir", type=Path, default=Path("ae_control_output"))
     parser.add_argument("--warmup-frames", type=int, default=30)
-    parser.add_argument(
-        "--ae-settle-frames",
-        type=int,
-        default=30,
-        help="RGB-D frames discarded after enabling color auto-exposure.",
-    )
     parser.add_argument("--frame-timeout-ms", type=int, default=1000)
     parser.add_argument("--capture-interval-ms", type=float, default=0.0)
     parser.add_argument("--exposure-value-per-ms", type=float, default=10.0)
-    parser.add_argument("--disable-awb", action="store_true")
-
     parser.add_argument("--depth-device", default="cuda")
     parser.add_argument("--depth-precision", choices=("fp16", "fp32"), default="fp32")
     parser.add_argument(
@@ -86,13 +218,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--min-valid-depth-pixels", type=int, default=10000)
     parser.add_argument("--depth-model-local-files-only", action="store_true")
     args = parser.parse_args()
-
-    if args.num_frames < 1:
-        parser.error("--num-frames must be positive.")
-    if args.warmup_frames < 0 or args.ae_settle_frames < 0:
-        parser.error("Camera frame counts must be non-negative.")
-    if args.frame_timeout_ms < 1:
-        parser.error("--frame-timeout-ms must be positive.")
+    if args.num_frames < 1 or args.frame_timeout_ms < 1:
+        parser.error("Frame count and timeout must be positive.")
+    if args.warmup_frames < 0:
+        parser.error("--warmup-frames must be non-negative.")
     if not math.isfinite(args.capture_interval_ms) or args.capture_interval_ms < 0:
         parser.error("--capture-interval-ms must be finite and non-negative.")
     if (
@@ -111,30 +240,13 @@ def _empty_row() -> dict[str, Any]:
     return {field: "" for field in CSV_FIELDS}
 
 
-def _enable_auto_exposure(camera: sensor.OrbbecColorCamera) -> None:
-    property_id = sensor.OBPropertyID.OB_PROP_COLOR_AUTO_EXPOSURE_BOOL
-    camera.device.set_bool_property(property_id, True)
-    try:
-        enabled = bool(camera.device.get_bool_property(property_id))
-    except (AttributeError, sensor.OBError, RuntimeError, TypeError, ValueError):
-        enabled = True  # Some devices expose write-only AE control.
-    if not enabled:
-        raise RuntimeError("The camera did not enable color auto-exposure.")
-
-
-def _read_int_property(camera: sensor.OrbbecColorCamera, property_id: Any) -> int | None:
-    try:
-        return int(camera.device.get_int_property(property_id))
-    except (AttributeError, sensor.OBError, RuntimeError, TypeError, ValueError):
-        return None
-
-
 def _save_capture(
     output_dir: Path,
     frame_index: int,
     image: np.ndarray,
     depth_m: np.ndarray,
-    camera: sensor.OrbbecColorCamera,
+    camera: DefaultOrbbecCamera,
+    auto_exposure: bool | None,
     exposure_raw: int | None,
     gain: int | None,
 ) -> dict[str, Any]:
@@ -146,21 +258,15 @@ def _save_capture(
     pred_depth_path = output_dir / "depth_pred" / f"{stem}.npy"
     if not cv2.imwrite(str(image_path), image):
         raise OSError(f"Failed to save RGB image: {image_path}")
-    np.save(gt_depth_path, np.ascontiguousarray(depth_m, dtype=np.float32))
-
+    np.save(gt_depth_path, depth_m)
     color_timestamp = camera.color_timestamp_us
     depth_timestamp = camera.depth_timestamp_us
-    gap = (
-        abs(color_timestamp - depth_timestamp)
-        if color_timestamp is not None and depth_timestamp is not None
-        else ""
-    )
     row = _empty_row()
     row.update(
         record_type="capture",
         frame_index=frame_index,
         timestamp_ns=timestamp_ns,
-        auto_exposure=1,
+        auto_exposure=int(auto_exposure) if auto_exposure is not None else "",
         actual_exposure_raw=exposure_raw if exposure_raw is not None else "",
         exposure_ms=(
             exposure_raw / camera.exposure_value_per_ms
@@ -172,7 +278,11 @@ def _save_capture(
         depth_frame_number=camera.depth_frame_number,
         color_timestamp_us=color_timestamp,
         depth_timestamp_us=depth_timestamp,
-        rgbd_timestamp_gap_us=gap,
+        rgbd_timestamp_gap_us=(
+            abs(color_timestamp - depth_timestamp)
+            if color_timestamp is not None and depth_timestamp is not None
+            else ""
+        ),
         image_path=str(image_path),
         gt_depth_path=str(gt_depth_path),
         raw_pred_depth_path=str(raw_pred_depth_path),
@@ -186,12 +296,9 @@ def _write_report(output_dir: Path, rows: list[dict[str, Any]]) -> Path:
     temporary_path = report_path.with_suffix(".csv.tmp")
     evaluated = [row for row in rows if row["abs_rel"] != ""]
     summary = _empty_row()
-    summary.update(
-        record_type="summary",
-        frame_index=len(rows),
-        auto_exposure=1,
-    )
+    summary.update(record_type="summary", frame_index=len(rows))
     for field in (
+        "auto_exposure",
         "actual_exposure_raw",
         "exposure_ms",
         "actual_gain",
@@ -208,7 +315,6 @@ def _write_report(output_dir: Path, rows: list[dict[str, Any]]) -> Path:
         source = evaluated if field in METRIC_FIELDS else rows
         values = [float(row[field]) for row in source if row[field] != ""]
         summary[field] = float(np.mean(values)) if values else ""
-
     with temporary_path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
         writer.writeheader()
@@ -222,35 +328,29 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
     output_dir = args.output_dir.resolve()
     for name in ("images", "depth_gt", "depth_pred_raw", "depth_pred"):
         (output_dir / name).mkdir(parents=True, exist_ok=True)
-
     predictor = DepthAnythingV2Small(args)
     rows: list[dict[str, Any]] = []
     run_error: BaseException | None = None
-    camera: sensor.OrbbecColorCamera | None = None
+    camera: DefaultOrbbecCamera | None = None
     try:
-        camera = sensor.OrbbecColorCamera(
-            exposure_value_per_ms=args.exposure_value_per_ms,
-            settle_frames=0,
+        camera = DefaultOrbbecCamera(
             frame_timeout_ms=args.frame_timeout_ms,
             warmup_frames=args.warmup_frames,
-            disable_awb=args.disable_awb,
-            strict_property_grid=False,
+            exposure_value_per_ms=args.exposure_value_per_ms,
         )
-        _enable_auto_exposure(camera)
-        for _ in range(args.ae_settle_frames):
-            camera.capture_rgbd()
-
         for frame_index in range(args.num_frames):
-            cycle_started = time.perf_counter()
+            started = time.perf_counter()
             image, depth_m = camera.capture_rgbd()
-            exposure_raw = _read_int_property(
-                camera, sensor.OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT
-            )
-            gain = _read_int_property(
-                camera, sensor.OBPropertyID.OB_PROP_COLOR_GAIN_INT
-            )
+            auto_exposure, exposure_raw, gain = camera.read_settings()
             row = _save_capture(
-                output_dir, frame_index, image, depth_m, camera, exposure_raw, gain
+                output_dir,
+                frame_index,
+                image,
+                depth_m,
+                camera,
+                auto_exposure,
+                exposure_raw,
+                gain,
             )
             try:
                 row["mde_inference_ms"] = predictor.infer(
@@ -263,7 +363,7 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
                     row.update(_evaluate_saved_prediction(row, args))
                 except (OSError, RuntimeError, ValueError) as error:
                     row["evaluation_error"] = str(error)
-            row["capture_cycle_ms"] = (time.perf_counter() - cycle_started) * 1000.0
+            row["capture_cycle_ms"] = (time.perf_counter() - started) * 1000.0
             rows.append(row)
             result = (
                 f"AbsRel={row['abs_rel']:.6f}"
@@ -272,10 +372,11 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
             )
             print(
                 f"[Frame] {frame_index + 1:03d}/{args.num_frames} "
-                f"E={row['exposure_ms']}ms G={row['actual_gain']} {result}"
+                f"AE={row['auto_exposure']} E={row['exposure_ms']}ms "
+                f"G={row['actual_gain']} {result}"
             )
             remaining = args.capture_interval_ms / 1000.0 - (
-                time.perf_counter() - cycle_started
+                time.perf_counter() - started
             )
             if remaining > 0:
                 time.sleep(remaining)
@@ -284,7 +385,6 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
     finally:
         if camera is not None:
             camera.close()
-
     report = _write_report(output_dir, rows)
     evaluated_count = sum(row["abs_rel"] != "" for row in rows)
     if run_error is not None:
