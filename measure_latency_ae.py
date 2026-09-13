@@ -14,6 +14,7 @@ import orbbec_ae_control as source
 WIDTH = 640
 HEIGHT = 480
 FPS = 15
+SDKPipeline = source.Pipeline
 LATENCY_CSV_FIELDS = (
     "record_type",
     "frame_index",
@@ -52,63 +53,61 @@ def _required_profile(profiles: Any, formats: tuple[Any, ...], label: str) -> An
     ) from last_error
 
 
+class FixedRateProfiles:
+    def __init__(self, profiles: Any, sensor_type: Any) -> None:
+        self.profiles = profiles
+        self.sensor_type = sensor_type
+
+    def get_default_video_stream_profile(self) -> Any:
+        if self.sensor_type == source.OBSensorType.COLOR_SENSOR:
+            formats = (
+                source.OBFormat.RGB,
+                source.OBFormat.BGR,
+                source.OBFormat.YUYV,
+                source.OBFormat.MJPG,
+            )
+            label = "color"
+        else:
+            formats = (source.OBFormat.Y16,)
+            label = "depth"
+        return _required_profile(self.profiles, formats, label)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.profiles, name)
+
+
+class FixedRatePipeline:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        if SDKPipeline is None:
+            raise RuntimeError("pyorbbecsdk is not installed.")
+        self.pipeline = SDKPipeline(*args, **kwargs)
+
+    def get_stream_profile_list(self, sensor_type: Any) -> FixedRateProfiles:
+        return FixedRateProfiles(
+            self.pipeline.get_stream_profile_list(sensor_type), sensor_type
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.pipeline, name)
+
+
 class FixedRateOrbbecCamera(source.DefaultOrbbecCamera):
     measurements: list[dict[str, Any]] = []
 
     def __init__(
         self,
-        *,
-        frame_timeout_ms: int,
-        warmup_frames: int,
-        exposure_value_per_ms: float,
+        *args: Any,
         settle_frames: int = 0,
+        settle_timeout: float | None = None,
+        **kwargs: Any,
     ) -> None:
-        if source.Pipeline is None:
-            raise RuntimeError("pyorbbecsdk is not installed.")
         if settle_frames < 0:
             raise ValueError("settle_frames must be non-negative.")
-        self.frame_timeout_ms = frame_timeout_ms
-        self.exposure_value_per_ms = exposure_value_per_ms
-        self.pipeline = source.Pipeline()
-        self.align_filter = source.AlignFilter(
-            align_to_stream=source.OBStreamType.COLOR_STREAM
-        )
+        if settle_timeout is not None and settle_timeout < 0:
+            raise ValueError("settle_timeout must be non-negative.")
+        super().__init__(*args, **kwargs)
         type(self).measurements = []
-
-        config = source.Config()
-        color_profiles = self.pipeline.get_stream_profile_list(
-            source.OBSensorType.COLOR_SENSOR
-        )
-        depth_profiles = self.pipeline.get_stream_profile_list(
-            source.OBSensorType.DEPTH_SENSOR
-        )
-        color_profile = _required_profile(
-            color_profiles,
-            (
-                source.OBFormat.RGB,
-                source.OBFormat.BGR,
-                source.OBFormat.YUYV,
-                source.OBFormat.MJPG,
-            ),
-            "color",
-        )
-        depth_profile = _required_profile(
-            depth_profiles, (source.OBFormat.Y16,), "depth"
-        )
-        config.enable_stream(color_profile)
-        config.enable_stream(depth_profile)
-        config.set_frame_aggregate_output_mode(
-            source.OBFrameAggregateOutputMode.FULL_FRAME_REQUIRE
-        )
-        try:
-            self.pipeline.enable_frame_sync()
-        except (AttributeError, source.OBError, RuntimeError) as error:
-            print(f"[WARNING] Could not enable frame sync: {error}", file=sys.stderr)
-        self.pipeline.start(config)
-        self.device = self.pipeline.get_device()
         print(f"[Camera] color={WIDTH}x{HEIGHT}@{FPS} depth={WIDTH}x{HEIGHT}@{FPS}")
-        for _ in range(warmup_frames):
-            self.pipeline.wait_for_frames(frame_timeout_ms)
 
     def capture_rgbd(self):
         started = time.perf_counter()
@@ -260,6 +259,7 @@ def write_latency_report(
 
 def main() -> int:
     args = source._parse_args()
+    source.Pipeline = FixedRatePipeline
     source.DefaultOrbbecCamera = FixedRateOrbbecCamera
     source.DepthAnythingV2Small = TimedDepthPredictor
     try:
