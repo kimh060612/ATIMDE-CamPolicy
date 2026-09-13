@@ -56,10 +56,17 @@ class FixedRateOrbbecCamera(source.DefaultOrbbecCamera):
     measurements: list[dict[str, Any]] = []
 
     def __init__(
-        self, *, frame_timeout_ms: int, warmup_frames: int, exposure_value_per_ms: float
+        self,
+        *,
+        frame_timeout_ms: int,
+        warmup_frames: int,
+        exposure_value_per_ms: float,
+        settle_frames: int = 0,
     ) -> None:
         if source.Pipeline is None:
             raise RuntimeError("pyorbbecsdk is not installed.")
+        if settle_frames < 0:
+            raise ValueError("settle_frames must be non-negative.")
         self.frame_timeout_ms = frame_timeout_ms
         self.exposure_value_per_ms = exposure_value_per_ms
         self.pipeline = source.Pipeline()
