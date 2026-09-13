@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import inspect
 import os
 import sys
 import time
@@ -105,6 +106,11 @@ class FixedRateOrbbecCamera(source.DefaultOrbbecCamera):
             raise ValueError("settle_frames must be non-negative.")
         if settle_timeout is not None and settle_timeout < 0:
             raise ValueError("settle_timeout must be non-negative.")
+        base_parameters = inspect.signature(super().__init__).parameters
+        if "settle_frames" in base_parameters:
+            kwargs["settle_frames"] = settle_frames
+        if "settle_timeout" in base_parameters:
+            kwargs["settle_timeout"] = settle_timeout
         super().__init__(*args, **kwargs)
         type(self).measurements = []
         print(f"[Camera] color={WIDTH}x{HEIGHT}@{FPS} depth={WIDTH}x{HEIGHT}@{FPS}")
