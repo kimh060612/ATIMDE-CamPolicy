@@ -56,7 +56,7 @@ class FairDepthEvaluator:
                     str(row["depth_path"]), allow_pickle=False
                 ).astype(np.float32)
                 prediction, inference_ms = predictor.predict(image, target.shape)
-                _, metrics = evaluate_depth_arrays(
+                aligned_depth_prediction, metrics = evaluate_depth_arrays(
                     prediction,
                     target,
                     alignment=self.config.evaluation_alignment,
@@ -70,6 +70,11 @@ class FairDepthEvaluator:
                     valid_depth_pixels=metrics["valid_depth_pixels"],
                     evaluation_inference_ms=inference_ms,
                 )
+                depth_file_name = str(row["depth_path"]).split("/")[-1]
+                raw_pred_path = self.config.output_dir / "depth_pred_raw" / depth_file_name
+                pred_path = self.config.output_dir / "depth_pred" / depth_file_name
+                np.save(raw_pred_path, prediction)
+                np.save(pred_path, aligned_depth_prediction)
                 print(
                     f"[Evaluate] round={row['round_index']} "
                     f"capture={row['capture_index']} metrics={metrics}"

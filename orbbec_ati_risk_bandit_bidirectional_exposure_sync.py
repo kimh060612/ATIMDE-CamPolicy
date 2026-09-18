@@ -68,6 +68,8 @@ def build_experiment(
 
     config = ExperimentConfig.from_args(args)
     config.output_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("depth_pred_raw", "depth_pred"):
+        (config.output_dir / name).mkdir(parents=True, exist_ok=True)
     context_provider = build_context_provider(args)
     camera = OrbbecColorCamera(
         exposure_value_per_ms=args.exposure_value_per_ms,
