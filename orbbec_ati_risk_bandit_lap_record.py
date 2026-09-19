@@ -19,7 +19,6 @@ import numpy as np
 from hardware.utils import SensorCell
 from orbbec_ati_risk_bandit_bidirectional_exposure_sync import (
     METHOD_NAME,
-    build_experiment as build_control_experiment,
     parse_args,
 )
 from orbbec_deterministic_probing_modelv1 import FairDepthEvaluator
@@ -260,20 +259,65 @@ def apply_lap_events(
         logger.finish_lap(lap, mode)
 
 
+def apply_cell_without_frame_drain(
+    camera: Any, cell: SensorCell
+) -> tuple[int, int | None, int | None]:
+    """Apply controls without consuming frames from the continuous stream."""
+    from pyorbbecsdk import OBError, OBPropertyID
+
+    exposure_raw = camera.exposure_to_raw(cell.exposure_ms)
+    camera.device.set_int_property(
+        OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT, exposure_raw
+    )
+    camera.device.set_int_property(OBPropertyID.OB_PROP_COLOR_GAIN_INT, cell.gain)
+
+    try:
+        actual_exposure = int(
+            camera.device.get_int_property(
+                OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT
+            )
+        )
+    except (AttributeError, OBError, TypeError, ValueError):
+        actual_exposure = None
+    try:
+        actual_gain = int(
+            camera.device.get_int_property(OBPropertyID.OB_PROP_COLOR_GAIN_INT)
+        )
+    except (AttributeError, OBError, TypeError, ValueError):
+        actual_gain = None
+
+    camera._capture_safe = True
+    camera._readback_matches = (
+        actual_exposure == exposure_raw and actual_gain == cell.gain
+    )
+    camera._settled_frames = camera.settle_frames
+    camera._pending_cell = cell
+    camera._verified_active_cell = None
+    camera._actual_exposure = actual_exposure
+    camera._actual_gain = actual_gain
+    return exposure_raw, actual_exposure, actual_gain
+
+
 class FullRateCamera:
     """Capture every 15 FPS frame while control consumes only settled latest frames."""
 
     def __init__(
         self,
-        camera: Any,
+        camera_kwargs: dict[str, Any],
         logger: FullRateLogger,
         lap_events: queue.SimpleQueue[tuple[int, str]],
     ) -> None:
-        self.camera = camera
+        self.camera_kwargs = camera_kwargs
         self.logger = logger
         self.lap_events = lap_events
-        self.exposure_value_per_ms = camera.exposure_value_per_ms
-        self.frame_timeout_ms = camera.frame_timeout_ms
+        self.exposure_value_per_ms = float(camera_kwargs["exposure_value_per_ms"])
+        self.frame_timeout_ms = int(camera_kwargs["frame_timeout_ms"])
+        self._operation_timeout_sec = max(
+            2.0,
+            self.frame_timeout_ms
+            / 1000.0
+            * max(4, int(camera_kwargs["settle_frames"]) + 2),
+        )
         self.color_frame_number = None
         self.depth_frame_number = None
         self.color_timestamp_us = None
@@ -287,61 +331,42 @@ class FullRateCamera:
         self._settle_remaining = 0
         self._current_lap = 1
         self._frame_index = 0
-        self._io_lock = threading.Lock()
+        self._commands: queue.Queue[tuple[SensorCell, queue.Queue[Any]]] = queue.Queue()
         self._controller_frames: queue.Queue[FramePacket] = queue.Queue(maxsize=1)
+        self._ready = threading.Event()
         self._stop = threading.Event()
         self._error: BaseException | None = None
         self._closed = False
-        self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
-        self._capture_thread.start()
+        self._camera_thread = threading.Thread(
+            target=self._camera_loop,
+            name="orbbec-camera-owner",
+            daemon=True,
+        )
+        self._camera_thread.start()
+        self._ready.wait()
+        self._raise_if_failed()
 
     def apply_cell(self, cell: SensorCell) -> tuple[int, int | None, int | None]:
-        from pyorbbecsdk import OBError, OBPropertyID
-
-        requested = self.camera.exposure_to_raw(cell.exposure_ms)
-        with self._io_lock:
-            if cell == self._active_cell and self._readback_matches:
-                return requested, self._actual_exposure, self._actual_gain
-
-            started = time.perf_counter()
-            device = self.camera.device
-            device.set_int_property(OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT, requested)
-            device.set_int_property(OBPropertyID.OB_PROP_COLOR_GAIN_INT, cell.gain)
+        if self._closed:
+            raise RuntimeError("Camera is closed.")
+        self._raise_if_failed()
+        reply: queue.Queue[Any] = queue.Queue(maxsize=1)
+        self._commands.put((cell, reply))
+        deadline = time.monotonic() + self._operation_timeout_sec
+        while time.monotonic() < deadline:
             try:
-                actual_exposure = int(
-                    device.get_int_property(OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT)
-                )
-            except (AttributeError, OBError, TypeError, ValueError):
-                actual_exposure = None
-            try:
-                actual_gain = int(
-                    device.get_int_property(OBPropertyID.OB_PROP_COLOR_GAIN_INT)
-                )
-            except (AttributeError, OBError, TypeError, ValueError):
-                actual_gain = None
-
-            self._active_cell = cell
-            self._actual_exposure = actual_exposure
-            self._actual_gain = actual_gain
-            self._readback_matches = (
-                actual_exposure == requested and actual_gain == cell.gain
-            )
-            self._settle_remaining = self.camera.settle_frames
-            self.sensor_settle_ms = (time.perf_counter() - started) * 1000.0
-
-            # Let the shared decoder return transition frames; they are recorded
-            # but withheld from the controller until the requested settle count.
-            self.camera._capture_safe = True
-            self.camera._readback_matches = self._readback_matches
-            self.camera._pending_cell = cell
-            self.camera._settled_frames = self.camera.settle_frames
-            self.camera._actual_exposure = actual_exposure
-            self.camera._actual_gain = actual_gain
-            self._clear_controller_frames()
-        return requested, actual_exposure, actual_gain
+                result = reply.get(timeout=0.1)
+            except queue.Empty:
+                self._raise_if_failed()
+                continue
+            if isinstance(result, BaseException):
+                raise result
+            return result
+        self._raise_if_failed()
+        raise TimeoutError("Timed out waiting for the camera control command.")
 
     def capture_rgbd(self) -> tuple[np.ndarray, np.ndarray]:
-        deadline = time.monotonic() + max(1.0, self.frame_timeout_ms / 1000.0 * 3)
+        deadline = time.monotonic() + self._operation_timeout_sec
         while time.monotonic() < deadline:
             self._raise_if_failed()
             try:
@@ -363,55 +388,91 @@ class FullRateCamera:
             return
         self._closed = True
         self._stop.set()
-        timeout = max(1.0, self.frame_timeout_ms / 1000.0 * 4)
-        self._capture_thread.join(timeout=timeout)
-        if self._capture_thread.is_alive():
-            self.camera.close()
-            self._capture_thread.join(timeout=timeout)
-        else:
-            self.camera.close()
-        self._apply_lap_events()
+        self._camera_thread.join(timeout=self._operation_timeout_sec)
+        if self._camera_thread.is_alive():
+            raise RuntimeError("Camera owner thread did not stop.")
         self._raise_if_failed()
 
-    def _capture_loop(self) -> None:
+    def _camera_loop(self) -> None:
+        camera = None
         try:
+            from hardware.sensor import OrbbecColorCamera
+
+            camera = OrbbecColorCamera(**self.camera_kwargs)
+            self._ready.set()
             while not self._stop.is_set():
                 self._apply_lap_events()
-                with self._io_lock:
-                    image, depth_m = self.camera.capture_rgbd()
-                    cell = self._active_cell
-                    if cell is None:
-                        continue
-                    effective = self._readback_matches and self._settle_remaining == 0
-                    if self._settle_remaining > 0:
-                        self._settle_remaining -= 1
-                    packet = FramePacket(
-                        frame_index=self._frame_index,
-                        lap=self._current_lap,
-                        timestamp_ns=time.time_ns(),
-                        image=image,
-                        depth_m=depth_m,
-                        cell=cell,
-                        requested_exposure_raw=self.camera.exposure_to_raw(
-                            cell.exposure_ms
-                        ),
-                        actual_exposure_raw=self._actual_exposure,
-                        actual_gain=self._actual_gain,
-                        color_frame_number=self.camera.color_frame_number,
-                        depth_frame_number=self.camera.depth_frame_number,
-                        color_timestamp_us=self.camera.color_timestamp_us,
-                        depth_timestamp_us=self.camera.depth_timestamp_us,
-                        setting_effective=effective,
-                        sensor_settle_ms=self.sensor_settle_ms,
-                    )
-                    self._frame_index += 1
+                self._apply_control_commands(camera)
+                image, depth_m = camera.capture_rgbd()
+                cell = self._active_cell
+                if cell is None:
+                    continue
+                effective = self._readback_matches and self._settle_remaining == 0
+                if self._settle_remaining > 0:
+                    self._settle_remaining -= 1
+                packet = FramePacket(
+                    frame_index=self._frame_index,
+                    lap=self._current_lap,
+                    timestamp_ns=time.time_ns(),
+                    image=image,
+                    depth_m=depth_m,
+                    cell=cell,
+                    requested_exposure_raw=camera.exposure_to_raw(cell.exposure_ms),
+                    actual_exposure_raw=self._actual_exposure,
+                    actual_gain=self._actual_gain,
+                    color_frame_number=camera.color_frame_number,
+                    depth_frame_number=camera.depth_frame_number,
+                    color_timestamp_us=camera.color_timestamp_us,
+                    depth_timestamp_us=camera.depth_timestamp_us,
+                    setting_effective=effective,
+                    sensor_settle_ms=self.sensor_settle_ms,
+                )
+                self._frame_index += 1
                 self.logger.submit(packet)
                 if packet.setting_effective:
                     self._offer_to_controller(packet)
+            self._apply_lap_events()
         except BaseException as error:
-            if not self._stop.is_set():
+            if self._error is None:
                 self._error = error
-                self._stop.set()
+            self._stop.set()
+        finally:
+            if camera is not None:
+                try:
+                    camera.close()
+                except BaseException as error:
+                    if self._error is None:
+                        self._error = error
+            self._ready.set()
+
+    def _apply_control_commands(self, camera: Any) -> None:
+        while True:
+            try:
+                cell, reply = self._commands.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                requested = camera.exposure_to_raw(cell.exposure_ms)
+                if cell == self._active_cell and self._readback_matches:
+                    reply.put((requested, self._actual_exposure, self._actual_gain))
+                    continue
+
+                started = time.perf_counter()
+                requested, actual_exposure, actual_gain = (
+                    apply_cell_without_frame_drain(camera, cell)
+                )
+                self._active_cell = cell
+                self._actual_exposure = actual_exposure
+                self._actual_gain = actual_gain
+                self._readback_matches = (
+                    actual_exposure == requested and actual_gain == cell.gain
+                )
+                self._settle_remaining = camera.settle_frames
+                self.sensor_settle_ms = (time.perf_counter() - started) * 1000.0
+                self._clear_controller_frames()
+                reply.put((requested, actual_exposure, actual_gain))
+            except BaseException as error:
+                reply.put(error)
 
     def _apply_lap_events(self) -> None:
         while True:
@@ -500,20 +561,76 @@ class LapEndHandler(BaseHTTPRequestHandler):
 
 
 def build_experiment(args, events):
+    from ati_mde_control.bidirectional_exposure_guard import (
+        BidirectionalExposureGuard,
+        BidirectionalExposureGuardConfig,
+    )
+    from ati_mde_control.capture_runner import CaptureRunner
+    from ati_mde_control.config import ExperimentConfig, SafetyPolicy
+    from ati_mde_control.context import build_context_provider
+    from ati_mde_control.predictor import CameraErrorPredictor
+    from ati_mde_control.risk_bandit_bidirectional_exposure_sync_experiment import (
+        RiskBanditBidirectionalExposureSyncExperiment,
+    )
+    from ati_mde_control.risk_bandit_policy import RiskBanditConfig
+    from ati_mde_control.saturation_guard import SaturationGuardedRiskBanditPolicy
     import hardware.sensor as sensor
 
     sensor.RGBD_WIDTH = 640
     sensor.RGBD_HEIGHT = 480
     sensor.RGBD_FPS = 15
-    experiment = build_control_experiment(args)
-    logger = FullRateLogger(experiment.config.output_dir)
-    camera = FullRateCamera(experiment.capture_runner.camera, logger, events)
-    experiment.capture_runner.camera = camera
-    experiment.logger = logger
-    experiment.evaluator = LapDepthEvaluator(
-        experiment.predictor,
-        experiment.config,
-        args.evaluation_precision,
+
+    config = ExperimentConfig.from_args(args)
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("depth_pred_raw", "depth_pred"):
+        (config.output_dir / name).mkdir(parents=True, exist_ok=True)
+
+    context_provider = build_context_provider(args)
+    predictor = CameraErrorPredictor(
+        config.checkpoint_path,
+        config.model_size,
+        config.device,
+        config.precision,
+        config.q_uncertainty_weight,
+        config.local_files_only,
+    )
+    policy = SaturationGuardedRiskBanditPolicy(
+        RiskBanditConfig.from_args(args),
+        SafetyPolicy.from_json(config.safety_path),
+        config.default_cell,
+    )
+    guard = BidirectionalExposureGuard(
+        BidirectionalExposureGuardConfig.from_args(args), policy.safe_fallback
+    )
+    logger = FullRateLogger(config.output_dir)
+    try:
+        camera = FullRateCamera(
+            {
+                "exposure_value_per_ms": args.exposure_value_per_ms,
+                "settle_frames": args.settle_frames,
+                "frame_timeout_ms": args.frame_timeout_ms,
+                "warmup_frames": args.warmup_frames,
+                "disable_awb": args.disable_awb,
+                "strict_property_grid": not args.allow_unsupported_grid_values,
+            },
+            logger,
+            events,
+        )
+    except BaseException:
+        logger.close()
+        context_provider.close()
+        raise
+    capture_runner = CaptureRunner(
+        camera, context_provider, config.max_pair_capture_gap_ms
+    )
+    experiment = RiskBanditBidirectionalExposureSyncExperiment(
+        config,
+        capture_runner,
+        predictor,
+        policy,
+        logger,
+        LapDepthEvaluator(predictor, config, args.evaluation_precision),
+        guard,
     )
     return experiment, camera, logger
 
