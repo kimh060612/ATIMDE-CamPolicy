@@ -1,0 +1,40 @@
+for rep in {1..5}; do
+	python3 measure_latency_risk_bandit.py \
+		--camera-error-checkpoint ../ati_mde_ckpt/scalar_camera_induced_error_degrade_lr5_softCE_vanilla/ckpt_model_epoch190.pt \
+		--safety-config ./config/safety_envelop.json \
+	    	--motion-source ros \
+		--disable-awb \
+	       	--precision fp32 \
+		--max-rounds 200 \
+	    	--settle-frames 4  \
+	       	--initial-exposure-ms 16 \
+	    	--initial-gain 64 \
+	    	--q-uncertainty-weight 1.645 \
+	    	--bandit-window-size 48 \
+	    	--bandit-exploration-beta 0.5 \
+	    	--bandit-switch-penalty 0.005 \
+	    	--bandit-temporal-scale-sec 5.0 \
+	    	--sat-soft-clip-ratio 0.60 \
+	    	--sat-secondary-clip-ratio 0.85 \
+	    	--sat-hard-clip-ratio 0.89 \
+	    	--sat-hard-mean-luminance 243 \
+	    	--sat-recovery-clip-ratio 0.50 \
+	    	--sat-recovery-frames 3 \
+	    	--sat-quarantine-rounds 60 \
+	    	--sat-min-ev-drop-stops 1 \
+	    	--sat-max-upward-ev-stops 1 \
+	    	--sat-projected-pixel-threshold 250 \
+	    	--sat-projected-hard-clip-ratio 0.90 \
+		--shadow-pixel-threshold 10 \
+    		--shadow-soft-ratio 0.25 \
+    		--shadow-hard-ratio 0.40 \
+    		--shadow-soft-mean-luminance 65 \
+    		--shadow-hard-mean-luminance 45 \
+    		--shadow-recovery-ratio 0.15 \
+    		--shadow-recovery-mean-luminance 80 \
+    		--shadow-recovery-frames 3 \
+    		--shadow-projected-ratio-limit 0.25 \
+	    	--evaluation-precision fp32 \
+	    	--lighting-state dark \
+	    	--output-dir "runs/ati_measure_latency_rep${rep}"
+done

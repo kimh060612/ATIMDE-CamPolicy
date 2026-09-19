@@ -1,0 +1,39 @@
+for rep in {6..7}; do
+	python3 orbbec_ati_risk_bandit_bidirectional_exposure_sync.py \
+		--camera-error-checkpoint ../ati_mde_ckpt/scalar_camera_induced_error_degrade_lr5_softCE_vanilla/ckpt_model_epoch190.pt \
+		--safety-config ./config/no_safety_envelope.json \
+	    	--motion-source ros \
+		--disable-awb \
+	       	--precision fp32 \
+		--max-rounds 200 \
+	    	--settle-frames 4  \
+	       	--initial-exposure-ms 16 \
+	    	--initial-gain 64 \
+	    	--q-uncertainty-weight 1.645 \
+	    	--bandit-window-size 48 \
+	    	--bandit-exploration-beta 0.5 \
+	    	--bandit-switch-penalty 0.005 \
+	    	--bandit-temporal-scale-sec 5.0 \
+	    	--sat-pixel-threshold 255 \
+    		--sat-recovery-clip-ratio 0.999999 \
+    		--sat-soft-clip-ratio 1 \
+    		--sat-secondary-clip-ratio 1 \
+    		--sat-hard-clip-ratio 1 \
+    		--sat-hard-mean-luminance 255 \
+    		--sat-projected-pixel-threshold 255 \
+    		--sat-projected-hard-clip-ratio 1 \
+    		--sat-recovery-frames 1 \
+    		--sat-quarantine-rounds 1 \
+    		--shadow-pixel-threshold 0 \
+    		--shadow-recovery-ratio 0.999998 \
+    		--shadow-soft-ratio 0.999999 \
+    		--shadow-hard-ratio 1 \
+    		--shadow-hard-mean-luminance 0 \
+    		--shadow-soft-mean-luminance 0.000001 \
+    		--shadow-recovery-mean-luminance 0.000002 \
+    		--shadow-projected-ratio-limit 1 \
+    		--shadow-recovery-frames 1 \
+	    	--evaluation-precision fp32 \
+	    	--lighting-state dark \
+	    	--output-dir "runs/dark_gpbandit_bidirsafe_woallsafety_scene2_rep${rep}"
+done

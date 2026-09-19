@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate synchronized RGB-D capture with untouched Orbbec camera defaults."""
+"""Capture with Orbbec color auto-exposure and evaluate synchronized MDE."""
 
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ try:
         OBError,
         OBFormat,
         OBFrameAggregateOutputMode,
+        OBFrameMetadataType,
+        OBPermissionType,
         OBPropertyID,
         OBSensorType,
         OBStreamType,
@@ -31,7 +33,15 @@ try:
     )
 except ImportError:  # pragma: no cover - requires the camera machine
     AlignFilter = Config = Pipeline = None  # type: ignore
+    OBFrameMetadataType = OBPermissionType = None  # type: ignore
     OBError = RuntimeError  # type: ignore
+
+
+FIXED_COLOR_WHITE_BALANCE = 4600
+FIXED_COLOR_BRIGHTNESS = 0
+FIXED_COLOR_GAMMA = 300
+FIXED_COLOR_SATURATION = 64
+FIXED_COLOR_SHARPNESS = 50
 
 
 METRIC_FIELDS = (
@@ -51,9 +61,14 @@ CSV_FIELDS = (
     "frame_index",
     "timestamp_ns",
     "auto_exposure",
+    "auto_exposure_source",
     "actual_exposure_raw",
     "exposure_ms",
+    "exposure_source",
     "actual_gain",
+    "gain_source",
+    "device_exposure_raw",
+    "device_gain",
     "color_frame_number",
     "depth_frame_number",
     "color_timestamp_us",
@@ -106,15 +121,28 @@ def _frame_to_bgr(frame: Any) -> np.ndarray:
 
 
 class DefaultOrbbecCamera:
-    """RGB-D capture that never writes a camera property."""
+    """RGB-D capture with color AE and per-frame camera metadata."""
 
     def __init__(
-        self, *, frame_timeout_ms: int, warmup_frames: int, exposure_value_per_ms: float
+        self,
+        *,
+        frame_timeout_ms: int,
+        settle_frames: int,
+        settle_timeout: float,
+        exposure_value_per_ms: float,
     ) -> None:
         if Pipeline is None:
             raise RuntimeError("pyorbbecsdk is not installed.")
         self.frame_timeout_ms = frame_timeout_ms
         self.exposure_value_per_ms = exposure_value_per_ms
+        self.frame_auto_exposure: bool | None = None
+        self.frame_exposure_raw: int | None = None
+        self.frame_gain: int | None = None
+        self.auto_exposure_source = ""
+        self.exposure_source = ""
+        self.gain_source = ""
+        self.device_exposure_raw: int | None = None
+        self.device_gain: int | None = None
         self.pipeline = Pipeline()
         self.align_filter = AlignFilter(align_to_stream=OBStreamType.COLOR_STREAM)
 
@@ -135,22 +163,216 @@ class DefaultOrbbecCamera:
         except (AttributeError, OBError, RuntimeError) as error:
             print(f"[WARNING] Could not enable frame sync: {error}", file=sys.stderr)
         self.pipeline.start(config)
-        self.device = self.pipeline.get_device()
-        for _ in range(warmup_frames):
-            self.pipeline.wait_for_frames(frame_timeout_ms)
+        try:
+            self.device = self.pipeline.get_device()
+            self._configure_fixed_color_appearance()
+            self._enable_auto_exposure_and_settle(
+                settle_frames=settle_frames,
+                settle_timeout=settle_timeout,
+            )
+        except BaseException:
+            try:
+                self.pipeline.stop()
+            except (AttributeError, OBError, RuntimeError):
+                pass
+            raise
 
     def close(self) -> None:
         self.pipeline.stop()
 
+    def _set_fixed_bool_property(
+        self,
+        property_id: Any,
+        value: bool,
+        *,
+        label: str,
+        required: bool,
+    ) -> bool:
+        try:
+            writable = bool(
+                self.device.is_property_supported(
+                    property_id, OBPermissionType.PERMISSION_WRITE
+                )
+            )
+        except (AttributeError, OBError, RuntimeError, TypeError, ValueError) as error:
+            if required:
+                raise RuntimeError(f"Could not query {label} support: {error}") from error
+            print(f"[WARNING] Could not query {label} support: {error}", file=sys.stderr)
+            return False
+        if not writable:
+            if required:
+                raise RuntimeError(f"Device does not support writing {label}.")
+            print(f"[WARNING] Device does not support writing {label}.", file=sys.stderr)
+            return False
+
+        try:
+            self.device.set_bool_property(property_id, value)
+            actual = bool(self.device.get_bool_property(property_id))
+        except (AttributeError, OBError, RuntimeError, TypeError, ValueError) as error:
+            raise RuntimeError(f"Could not configure {label}: {error}") from error
+        if actual != value:
+            raise RuntimeError(
+                f"{label} readback mismatch: requested={value}, actual={actual}."
+            )
+        print(f"[Camera] {label}={actual}")
+        return True
+
+    def _set_fixed_int_property(
+        self,
+        property_id: Any,
+        value: int,
+        *,
+        label: str,
+        required: bool,
+    ) -> bool:
+        try:
+            writable = bool(
+                self.device.is_property_supported(
+                    property_id, OBPermissionType.PERMISSION_WRITE
+                )
+            )
+        except (AttributeError, OBError, RuntimeError, TypeError, ValueError) as error:
+            if required:
+                raise RuntimeError(f"Could not query {label} support: {error}") from error
+            print(f"[WARNING] Could not query {label} support: {error}", file=sys.stderr)
+            return False
+        if not writable:
+            if required:
+                raise RuntimeError(f"Device does not support writing {label}.")
+            print(f"[WARNING] Device does not support writing {label}.", file=sys.stderr)
+            return False
+
+        try:
+            self.device.set_int_property(property_id, value)
+            actual = int(self.device.get_int_property(property_id))
+        except (AttributeError, OBError, RuntimeError, TypeError, ValueError) as error:
+            raise RuntimeError(f"Could not configure {label}: {error}") from error
+        if actual != value:
+            raise RuntimeError(
+                f"{label} readback mismatch: requested={value}, actual={actual}."
+            )
+        print(f"[Camera] {label}={actual}")
+        return True
+
+    def _configure_fixed_color_appearance(self) -> None:
+        """Remove automatic/non-deterministic color appearance changes."""
+
+        self._set_fixed_bool_property(
+            OBPropertyID.OB_PROP_COLOR_HDR_BOOL,
+            False,
+            label="color_hdr",
+            required=False,
+        )
+        self._set_fixed_bool_property(
+            OBPropertyID.OB_PROP_COLOR_AUTO_WHITE_BALANCE_BOOL,
+            False,
+            label="color_auto_white_balance",
+            required=True,
+        )
+        self._set_fixed_int_property(
+            OBPropertyID.OB_PROP_COLOR_WHITE_BALANCE_INT,
+            FIXED_COLOR_WHITE_BALANCE,
+            label="color_white_balance",
+            required=True,
+        )
+        for property_id, value, label in (
+            (
+                OBPropertyID.OB_PROP_COLOR_BRIGHTNESS_INT,
+                FIXED_COLOR_BRIGHTNESS,
+                "color_brightness",
+            ),
+            (
+                OBPropertyID.OB_PROP_COLOR_GAMMA_INT,
+                FIXED_COLOR_GAMMA,
+                "color_gamma",
+            ),
+            (
+                OBPropertyID.OB_PROP_COLOR_SATURATION_INT,
+                FIXED_COLOR_SATURATION,
+                "color_saturation",
+            ),
+            (
+                OBPropertyID.OB_PROP_COLOR_SHARPNESS_INT,
+                FIXED_COLOR_SHARPNESS,
+                "color_sharpness",
+            ),
+        ):
+            self._set_fixed_int_property(
+                property_id,
+                value,
+                label=label,
+                required=False,
+            )
+
+    def _enable_auto_exposure_and_settle(
+        self, *, settle_frames: int, settle_timeout: float
+    ) -> None:
+        property_id = OBPropertyID.OB_PROP_COLOR_AUTO_EXPOSURE_BOOL
+        try:
+            writable = bool(
+                self.device.is_property_supported(
+                    property_id, OBPermissionType.PERMISSION_WRITE
+                )
+            )
+        except (AttributeError, OBError, RuntimeError, TypeError, ValueError) as error:
+            raise RuntimeError(
+                f"Could not query color auto-exposure support: {error}"
+            ) from error
+        if not writable:
+            raise RuntimeError("Device does not support enabling color auto-exposure.")
+
+        self.device.set_bool_property(property_id, True)
+        try:
+            enabled = bool(self.device.get_bool_property(property_id))
+        except (AttributeError, OBError, RuntimeError, TypeError, ValueError) as error:
+            raise RuntimeError(f"Could not verify color auto-exposure: {error}") from error
+        if not enabled:
+            raise RuntimeError("The camera did not enable color auto-exposure.")
+
+        deadline = time.monotonic() + settle_timeout
+        settled = 0
+        while settled < settle_frames:
+            remaining_ms = int(math.ceil((deadline - time.monotonic()) * 1000.0))
+            if remaining_ms <= 0:
+                raise TimeoutError(
+                    f"Timed out after {settled}/{settle_frames} AE settling frames."
+                )
+            frames = self.pipeline.wait_for_frames(remaining_ms)
+            if frames is not None:
+                settled += 1
+
+    @staticmethod
+    def _metadata_value(frame: Any, metadata_type: Any) -> int | None:
+        try:
+            if frame is None or not frame.has_metadata(metadata_type):
+                return None
+            return int(frame.get_metadata_value(metadata_type))
+        except (AttributeError, OBError, RuntimeError, TypeError, ValueError):
+            return None
+
+    def _record_frame_settings(self, color_frame: Any) -> None:
+        auto_exposure = self._metadata_value(
+            color_frame, OBFrameMetadataType.AUTO_EXPOSURE
+        )
+        self.frame_auto_exposure = (
+            bool(auto_exposure) if auto_exposure is not None else None
+        )
+        self.frame_exposure_raw = self._metadata_value(
+            color_frame, OBFrameMetadataType.EXPOSURE
+        )
+        self.frame_gain = self._metadata_value(
+            color_frame, OBFrameMetadataType.GAIN
+        )
+
     def read_settings(self) -> tuple[bool | None, int | None, int | None]:
         try:
-            auto_exposure = bool(
+            device_auto_exposure = bool(
                 self.device.get_bool_property(
                     OBPropertyID.OB_PROP_COLOR_AUTO_EXPOSURE_BOOL
                 )
             )
         except (AttributeError, OBError, RuntimeError, TypeError, ValueError):
-            auto_exposure = None
+            device_auto_exposure = None
 
         def read(property_id: Any) -> int | None:
             try:
@@ -158,16 +380,43 @@ class DefaultOrbbecCamera:
             except (AttributeError, OBError, RuntimeError, TypeError, ValueError):
                 return None
 
-        return (
-            auto_exposure,
-            read(OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT),
-            read(OBPropertyID.OB_PROP_COLOR_GAIN_INT),
+        self.device_exposure_raw = read(OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT)
+        self.device_gain = read(OBPropertyID.OB_PROP_COLOR_GAIN_INT)
+        auto_exposure = (
+            self.frame_auto_exposure
+            if self.frame_auto_exposure is not None
+            else device_auto_exposure
         )
+        exposure_raw = (
+            self.frame_exposure_raw
+            if self.frame_exposure_raw is not None
+            else self.device_exposure_raw
+        )
+        gain = self.frame_gain if self.frame_gain is not None else self.device_gain
+        self.auto_exposure_source = (
+            "frame_metadata"
+            if self.frame_auto_exposure is not None
+            else "device_property" if device_auto_exposure is not None else ""
+        )
+        self.exposure_source = (
+            "frame_metadata"
+            if self.frame_exposure_raw is not None
+            else "device_property" if self.device_exposure_raw is not None else ""
+        )
+        self.gain_source = (
+            "frame_metadata"
+            if self.frame_gain is not None
+            else "device_property" if self.device_gain is not None else ""
+        )
+        return auto_exposure, exposure_raw, gain
 
     def capture_rgbd(self) -> tuple[np.ndarray, np.ndarray]:
         deadline = time.monotonic() + max(1.0, self.frame_timeout_ms / 1000.0 * 3)
         while time.monotonic() < deadline:
             frames = self.pipeline.wait_for_frames(self.frame_timeout_ms)
+            source_color_frame = (
+                frames.get_color_frame() if frames is not None else None
+            )
             aligned = self.align_filter.process(frames) if frames is not None else None
             if aligned is None:
                 continue
@@ -175,6 +424,12 @@ class DefaultOrbbecCamera:
             depth_frame = aligned.get_depth_frame()
             if color_frame is None or depth_frame is None:
                 continue
+            metadata_frame = (
+                source_color_frame
+                if source_color_frame is not None
+                else color_frame
+            )
+            self._record_frame_settings(metadata_frame)
             image = _frame_to_bgr(color_frame)
             depth = np.frombuffer(depth_frame.get_data(), dtype=np.uint16).reshape(
                 int(depth_frame.get_height()), int(depth_frame.get_width())
@@ -198,11 +453,24 @@ class DefaultOrbbecCamera:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Orbbec default-camera capture and MDE evaluation."
+        description="Orbbec color auto-exposure capture and MDE evaluation."
     )
     parser.add_argument("--num-frames", type=int, default=200)
     parser.add_argument("--output-dir", type=Path, default=Path("ae_control_output"))
-    parser.add_argument("--warmup-frames", type=int, default=30)
+    parser.add_argument(
+        "--camera-settle-frames",
+        "--warmup-frames",
+        dest="camera_settle_frames",
+        type=int,
+        default=30,
+        help="Frames discarded after explicitly enabling color auto-exposure.",
+    )
+    parser.add_argument(
+        "--camera-settle-timeout",
+        type=float,
+        default=10.0,
+        help="Total timeout in seconds for AE settling frames.",
+    )
     parser.add_argument("--frame-timeout-ms", type=int, default=1000)
     parser.add_argument("--capture-interval-ms", type=float, default=0.0)
     parser.add_argument("--exposure-value-per-ms", type=float, default=10.0)
@@ -220,8 +488,13 @@ def _parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.num_frames < 1 or args.frame_timeout_ms < 1:
         parser.error("Frame count and timeout must be positive.")
-    if args.warmup_frames < 0:
-        parser.error("--warmup-frames must be non-negative.")
+    if args.camera_settle_frames < 0:
+        parser.error("--camera-settle-frames must be non-negative.")
+    if (
+        not math.isfinite(args.camera_settle_timeout)
+        or args.camera_settle_timeout <= 0
+    ):
+        parser.error("--camera-settle-timeout must be finite and positive.")
     if not math.isfinite(args.capture_interval_ms) or args.capture_interval_ms < 0:
         parser.error("--capture-interval-ms must be finite and non-negative.")
     if (
@@ -267,13 +540,26 @@ def _save_capture(
         frame_index=frame_index,
         timestamp_ns=timestamp_ns,
         auto_exposure=int(auto_exposure) if auto_exposure is not None else "",
+        auto_exposure_source=getattr(camera, "auto_exposure_source", ""),
         actual_exposure_raw=exposure_raw if exposure_raw is not None else "",
         exposure_ms=(
             exposure_raw / camera.exposure_value_per_ms
             if exposure_raw is not None
             else ""
         ),
+        exposure_source=getattr(camera, "exposure_source", ""),
         actual_gain=gain if gain is not None else "",
+        gain_source=getattr(camera, "gain_source", ""),
+        device_exposure_raw=(
+            getattr(camera, "device_exposure_raw", None)
+            if getattr(camera, "device_exposure_raw", None) is not None
+            else ""
+        ),
+        device_gain=(
+            getattr(camera, "device_gain", None)
+            if getattr(camera, "device_gain", None) is not None
+            else ""
+        ),
         color_frame_number=camera.color_frame_number,
         depth_frame_number=camera.depth_frame_number,
         color_timestamp_us=color_timestamp,
@@ -333,9 +619,15 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
     run_error: BaseException | None = None
     camera: DefaultOrbbecCamera | None = None
     try:
+        frame_timeout_ms = getattr(
+            args,
+            "frame_timeout_ms",
+            max(1, int(round(args.camera_settle_timeout * 1000.0))),
+        )
         camera = DefaultOrbbecCamera(
-            frame_timeout_ms=args.frame_timeout_ms,
-            warmup_frames=args.warmup_frames,
+            frame_timeout_ms=frame_timeout_ms,
+            settle_frames=args.camera_settle_frames,
+            settle_timeout=args.camera_settle_timeout,
             exposure_value_per_ms=args.exposure_value_per_ms,
         )
         for frame_index in range(args.num_frames):
@@ -373,7 +665,7 @@ def _run(args: argparse.Namespace) -> tuple[Path, int, int]:
             print(
                 f"[Frame] {frame_index + 1:03d}/{args.num_frames} "
                 f"AE={row['auto_exposure']} E={row['exposure_ms']}ms "
-                f"G={row['actual_gain']} {result}"
+                f"G={row['actual_gain']} source={row['exposure_source']} {result}"
             )
             remaining = args.capture_interval_ms / 1000.0 - (
                 time.perf_counter() - started
