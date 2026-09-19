@@ -7,6 +7,7 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import orbbec_drl_control as control
 from hardware.utils import SensorCell
@@ -16,6 +17,7 @@ from orbbec_ati_risk_bandit_lap_record import (
     FramePacket,
     FullRateCamera,
     FullRateLogger,
+    LapDepthEvaluator,
     LapEndHandler,
 )
 
@@ -131,7 +133,28 @@ def run(args) -> tuple[Path, int, int]:
                 server_thread.join()
         finally:
             if lap_logger is not None:
-                print(f"[Lap] wrote {lap_logger.write()}")
+                try:
+                    lap_logger.close()
+                    config = SimpleNamespace(
+                        device=args.depth_device,
+                        evaluation_alignment=args.depth_alignment,
+                        min_depth_m=args.min_depth_m,
+                        max_depth_m=args.max_depth_m,
+                        min_valid_depth_pixels=args.min_valid_depth_pixels,
+                        local_files_only=args.depth_model_local_files_only,
+                        output_dir=args.output_dir.resolve(),
+                    )
+                    LapDepthEvaluator(None, config, args.depth_precision).evaluate_rows(
+                        lap_logger.rows
+                    )
+                    if lap_logger.rows and not any(
+                        row["abs_rel"] != "" for row in lap_logger.rows
+                    ):
+                        raise RuntimeError(
+                            "AbsRel/A1 evaluation failed for every full-rate frame."
+                        )
+                finally:
+                    print(f"[Lap] wrote {lap_logger.write()}")
 
 
 def main() -> int:
