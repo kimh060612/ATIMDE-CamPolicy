@@ -226,6 +226,7 @@ class LapCaptureLogger:
     def __init__(self, output_dir: Path) -> None:
         self.output_dir = output_dir
         self.current_lap = 1
+        self._first_received_lap: int | None = None
         self._select_lap()
 
     def _select_lap(self) -> None:
@@ -236,6 +237,9 @@ class LapCaptureLogger:
             (lap_dir / name).mkdir(parents=True, exist_ok=True)
 
     def finish_lap(self, lap: int, mode: str) -> None:
+        if self._first_received_lap is None:
+            self._first_received_lap = lap
+        lap = lap - self._first_received_lap + 1
         if lap < self.current_lap:
             print(f"[Lap] duplicate notification ignored: lap={lap}")
             return
@@ -330,6 +334,7 @@ class FullRateCamera:
         self._readback_matches = False
         self._settle_remaining = 0
         self._current_lap = 1
+        self._first_received_lap: int | None = None
         self._frame_index = 0
         self._commands: queue.Queue[tuple[SensorCell, queue.Queue[Any]]] = queue.Queue()
         self._controller_frames: queue.Queue[FramePacket] = queue.Queue(maxsize=1)
@@ -480,6 +485,9 @@ class FullRateCamera:
                 lap, mode = self.lap_events.get_nowait()
             except queue.Empty:
                 return
+            if self._first_received_lap is None:
+                self._first_received_lap = lap
+            lap = lap - self._first_received_lap + 1
             if lap < self._current_lap:
                 print(f"[Lap] duplicate notification ignored: lap={lap}")
                 continue
