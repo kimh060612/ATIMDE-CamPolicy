@@ -26,6 +26,7 @@ from orbbec_deterministic_probing_modelv1 import FairDepthEvaluator
 
 LAP_END_ADDRESS = ("localhost", 3000)
 LAP_END_PATH = "/lap-end"
+RECORD_FRAME_STRIDE = 2
 REPORT_FIELDS = (
     "record_type",
     "lap",
@@ -303,7 +304,7 @@ def apply_cell_without_frame_drain(
 
 
 class FullRateCamera:
-    """Capture every 15 FPS frame while control consumes only settled latest frames."""
+    """Capture at 30 FPS, record at 15 FPS, and control from settled latest frames."""
 
     def __init__(
         self,
@@ -433,7 +434,8 @@ class FullRateCamera:
                     sensor_settle_ms=self.sensor_settle_ms,
                 )
                 self._frame_index += 1
-                self.logger.submit(packet)
+                if packet.frame_index % RECORD_FRAME_STRIDE == 0:
+                    self.logger.submit(packet)
                 if packet.setting_effective:
                     self._offer_to_controller(packet)
             self._apply_lap_events()
@@ -582,12 +584,6 @@ def build_experiment(args, events):
     )
     from ati_mde_control.risk_bandit_policy import RiskBanditConfig
     from ati_mde_control.saturation_guard import SaturationGuardedRiskBanditPolicy
-    import hardware.sensor as sensor
-
-    sensor.RGBD_WIDTH = 640
-    sensor.RGBD_HEIGHT = 480
-    sensor.RGBD_FPS = 15
-
     config = ExperimentConfig.from_args(args)
     config.output_dir.mkdir(parents=True, exist_ok=True)
     for name in ("depth_pred_raw", "depth_pred"):
@@ -657,7 +653,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         threading.Thread(target=server.serve_forever, daemon=True).start()
         experiment, camera, logger = build_experiment(args, events)
         print(
-            f"[Start] {METHOD_NAME}; continuous capture=640x480@15; "
+            f"[Start] {METHOD_NAME}; capture=640x480@30, recording=15 FPS; "
             f"lap-end=http://{LAP_END_ADDRESS[0]}:{LAP_END_ADDRESS[1]}{LAP_END_PATH}; "
             f"control rounds={args.max_rounds}; press Ctrl-C to stop early."
         )
